@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <glm/glm.hpp>
 #include <memory>
+#include <vector>
 
 template <typename T>
 using Scope = std::unique_ptr<T>;
@@ -135,20 +136,20 @@ class PatchMatchStereo {
     const uint8_t* m_left_img;
     const uint8_t* m_right_img;
 
-    Scope<uint8_t[]> m_left_gray;
-    Scope<uint8_t[]> m_right_gray;
+    std::vector<uint8_t> m_left_gray;
+    std::vector<uint8_t> m_right_gray;
 
-    Scope<Gradient[]> m_left_grad;
-    Scope<Gradient[]> m_right_grad;
+    std::vector<Gradient> m_left_grad;
+    std::vector<Gradient> m_right_grad;
 
-    Scope<float[]> m_left_cost;
-    Scope<float[]> m_right_cost;
+    std::vector<float> m_left_cost;
+    std::vector<float> m_right_cost;
 
-    Scope<DisparityPlane[]> m_left_plane;
-    Scope<DisparityPlane[]> m_right_plane;
+    std::vector<DisparityPlane> m_left_plane;
+    std::vector<DisparityPlane> m_right_plane;
 
-    Scope<float[]> m_left_disparity;
-    Scope<float[]> m_right_disparity;
+    std::vector<float> m_left_disparity;
+    std::vector<float> m_right_disparity;
 };
 
 #endif  // !PATCH_MATCH_STEREO_HPP

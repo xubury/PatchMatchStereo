@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.1)
 project(PatchMatch)
 
+
+find_package(glm REQUIRED)
 find_package(OpenCV REQUIRED)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -17,5 +19,5 @@ add_executable(PatchMatch src/main.cpp src/PatchMatchStereo.cpp)
 
 target_compile_options(PatchMatch PUBLIC -Wall -Wextra -Wundef -pedantic -std=c++17)
 
-target_link_libraries(PatchMatch ${OpenCV_LIBS})
+target_link_libraries(PatchMatch ${OpenCV_LIBS} glm)
 target_include_directories(PatchMatch PUBLIC ${OpenCV_INCLUDE_DIRS} include)
