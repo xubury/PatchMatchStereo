@@ -23,6 +23,5 @@ int main() {
             break;
         }
     }
-    cv::imwrite("img/output.png", img);
     return 0;
 }

@@ -92,6 +92,7 @@ class PatchMatchStereo {
         bool is_force_fpw;
         bool is_integer_disp;
 
+        bool is_debug;
         Option()
             : patch_size(25),
               min_disparity(0),
@@ -105,7 +106,8 @@ class PatchMatchStereo {
               lrcheck_thresh(0),
               is_fill_hole(false),
               is_force_fpw(false),
-              is_integer_disp(false) {}
+              is_integer_disp(false),
+              is_debug(true) {}
     };
 
     struct Gradient {
