@@ -76,7 +76,6 @@ bool PatchMatchStereo::Init(int32_t width, int32_t height,
     // const int32_t disp_range = option.max_disparity - option.min_disparity;
     // 灰度数据
     m_left_gray.resize(img_size);
-    ;
     m_right_gray.resize(img_size);
     // 梯度数据
     m_left_grad.resize(img_size);
@@ -240,6 +239,11 @@ void PatchMatchStereo::Propagation() {
         m_right_img, m_left_img, m_right_grad.data(), m_left_grad.data(),
         m_width, m_height, m_option, m_right_plane.data(), m_left_plane.data(),
         m_right_cost.data(), m_left_cost.data());
+
+    for (int i = 0; i < m_option.num_iters; ++i) {
+        left_propagation.DoPropagation();
+        right_propagation.DoPropagation();
+    }
 }
 
 void PatchMatchStereo::PlaneToDisparity() {

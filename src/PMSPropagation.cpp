@@ -1,38 +1,6 @@
 #include "PMSPropagation.hpp"
 
-PMSPropagation::PMSPropagation(
-    const uint8_t *left_img, const uint8_t *right_img,
-    const PatchMatchStereo::Gradient *left_grad,
-    const PatchMatchStereo::Gradient *right_grad, int32_t width, int32_t height,
-    const PatchMatchStereo::Option &option, DisparityPlane *left_plane,
-    DisparityPlane *right_plane, float *left_cost, float *right_cost)
-    : m_left_cost_computer(left_img, right_img, left_grad, right_grad, width,
-                           height, option),
-      m_right_cost_computer(right_img, left_img, right_grad, left_grad, width,
-                            height, option),
-      m_left_img(left_img),
-      m_right_img(right_img),
-      m_left_grad(left_grad),
-      m_right_grad(right_grad),
-      m_width(width),
-      m_height(height),
-      m_option(option),
-      m_left_plane(left_plane),
-      m_right_plane(right_plane),
-      m_left_cost(left_cost),
-      m_right_cost(right_cost) {
-    ComputeCostData();
-}
-
-void PMSPropagation::ComputeCostData() {
-    for (int32_t y = 0; y < m_height; y++) {
-        for (int32_t x = 0; x < m_width; x++) {
-            const auto &plane_p = m_left_plane[y * m_width + x];
-            m_left_cost[y * m_width + x] =
-                m_left_cost_computer.ComputeAggregation(x, y, plane_p);
-        }
-    }
-}
+const float PUNISH_FACTOR = 12.f;
 
 CostComputerPMS::CostComputerPMS(const uint8_t *left_img,
                                  const uint8_t *right_img,
@@ -116,7 +84,7 @@ float CostComputerPMS::ComputeAggregation(int32_t x, int32_t y,
             // 计算视差值
             const float d = p.GetDisparity(xc, yr);
             if (d < m_min_disp || d > m_max_disp) {
-                cost += 12.f;  // PUNISH
+                cost += PUNISH_FACTOR;
                 continue;
             }
 
@@ -133,3 +101,42 @@ float CostComputerPMS::ComputeAggregation(int32_t x, int32_t y,
     }
     return cost;
 }
+
+PMSPropagation::PMSPropagation(
+    const uint8_t *left_img, const uint8_t *right_img,
+    const PatchMatchStereo::Gradient *left_grad,
+    const PatchMatchStereo::Gradient *right_grad, int32_t width, int32_t height,
+    const PatchMatchStereo::Option &option, DisparityPlane *left_plane,
+    DisparityPlane *right_plane, float *left_cost, float *right_cost)
+    : m_left_cost_computer(left_img, right_img, left_grad, right_grad, width,
+                           height, option),
+      m_right_cost_computer(right_img, left_img, right_grad, left_grad, width,
+                            height, option),
+      m_left_img(left_img),
+      m_right_img(right_img),
+      m_left_grad(left_grad),
+      m_right_grad(right_grad),
+      m_width(width),
+      m_height(height),
+      m_option(option),
+      m_left_plane(left_plane),
+      m_right_plane(right_plane),
+      m_left_cost(left_cost),
+      m_right_cost(right_cost) {
+    ComputeCostData();
+}
+
+void PMSPropagation::DoPropagation() {
+
+}
+
+void PMSPropagation::ComputeCostData() {
+    for (int32_t y = 0; y < m_height; y++) {
+        for (int32_t x = 0; x < m_width; x++) {
+            const auto &plane_p = m_left_plane[y * m_width + x];
+            m_left_cost[y * m_width + x] =
+                m_left_cost_computer.ComputeAggregation(x, y, plane_p);
+        }
+    }
+}
+
