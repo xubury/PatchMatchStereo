@@ -32,4 +32,17 @@ class Timer {
     std::chrono::time_point<ClockType> m_last_ticks;
 };
 
+namespace Random {
+
+// generate uniform random range in [0, 1]
+double Uniform();
+
+float Uniform(float min, float max);
+double Uniform(double min, double max);
+int32_t Uniform(int32_t min, int32_t max);
+
+void Seed(uint32_t seed);
+
+};  // namespace Random
+
 #endif

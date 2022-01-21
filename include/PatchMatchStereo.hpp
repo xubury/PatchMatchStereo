@@ -5,6 +5,8 @@
 #include <memory>
 #include <vector>
 
+// TODO: Put this to another separate module and
+//  make an option for no glm dependency in the future
 #include <glm/glm.hpp>
 using Color = glm::i8vec3;
 using Vector3f = glm::vec3;
@@ -13,6 +15,7 @@ inline const auto& Dot =
     static_cast<float (*)(const Vector3f&, const Vector3f&)>(glm::dot);
 inline const auto& Normalize =
     static_cast<Vector3f (*)(const Vector3f&)>(glm::normalize);
+/////////////////////////////////////////////////////////////////////
 
 struct DisparityPlane {
     Vector3f p;
@@ -26,7 +29,6 @@ struct DisparityPlane {
     }
 
     /**
-     
      * \param x		像素x坐标
      * \param y		像素y坐标
      * \return 像素(x,y)的视差

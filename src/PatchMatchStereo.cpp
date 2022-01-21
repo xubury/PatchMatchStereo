@@ -1,12 +1,11 @@
-#include "PatchMatchStereo.hpp"
-#include "PMSPropagation.hpp"
-#include "Utils.hpp"
-
 #include <cstring>
 #include <iostream>
 #include <random>
 #include <filesystem>
 #include <opencv2/opencv.hpp>
+
+#include "PMSPropagation.hpp"
+#include "Utils.hpp"
 
 const std::filesystem::path DEBUG_PATH = "img/debug";
 
@@ -151,11 +150,10 @@ bool PatchMatchStereo::Match(const uint8_t *left_img, const uint8_t *right_img,
 }
 
 void PatchMatchStereo::RandomInit() {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> rand_d(m_option.min_disparity,
-                                                 m_option.max_disparity);
-    std::uniform_real_distribution<float> rand_n(-1.f, 1.f);
+    using FloatRndFunc = float (*)(float, float);
+    auto rand_d = std::bind<FloatRndFunc>(
+        Random::Uniform, m_option.min_disparity, m_option.max_disparity);
+    auto rand_n = std::bind<FloatRndFunc>(Random::Uniform, -1.f, 1.f);
 
     for (int k = 0; k < 2; ++k) {
         auto disp_ptr =
@@ -165,24 +163,24 @@ void PatchMatchStereo::RandomInit() {
         for (int32_t y = 0; y < m_height; ++y) {
             for (int32_t x = 0; x < m_width; ++x) {
                 const int32_t p = y * m_width + x;
-                float disp = sign * rand_d(gen);
+                float disp = sign * rand_d();
                 if (m_option.is_integer_disp) {
                     disp = std::round(disp);
                 }
                 disp_ptr[p] = disp;
 
-                glm::vec3 norm;
+                Vector3f norm;
                 if (!m_option.is_force_fpw) {
-                    norm.x = rand_n(gen);
-                    norm.y = rand_n(gen);
-                    float z = rand_n(gen);
+                    norm.x = rand_n();
+                    norm.y = rand_n();
+                    float z = rand_n();
                     while (z == 0) {
-                        z = rand_n(gen);
+                        z = rand_n();
                     }
                     norm.z = z;
-                    norm = glm::normalize(norm);
+                    norm = Normalize(norm);
                 } else {
-                    norm = glm::vec3(0, 0, 1);
+                    norm = Vector3f(0, 0, 1);
                 }
                 plane_ptr[p] = DisparityPlane(x, y, norm, disp);
             }
