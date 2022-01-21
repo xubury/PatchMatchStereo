@@ -15,7 +15,9 @@ else()
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/release)
 endif()
 
-add_executable(PatchMatch src/main.cpp src/PatchMatchStereo.cpp)
+add_executable(PatchMatch 
+    src/main.cpp 
+    src/PatchMatchStereo.cpp)
 
 target_compile_options(PatchMatch PUBLIC -Wall -Wextra -Wundef -pedantic -std=c++17)
 

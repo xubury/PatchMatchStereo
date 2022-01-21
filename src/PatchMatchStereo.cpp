@@ -19,18 +19,35 @@ static void OutputDebugImg(int rows, int cols, int channels, float *data,
     cv::imwrite((DEBUG_PATH / name).generic_string(), mat);
 }
 
+static void OutputDebugImg(int rows, int cols, PatchMatchStereo::Gradient *data,
+                           const std::string &name) {
+    std::vector<float> combine_grad(rows * cols);
+    for (int32_t y = 0; y < rows; ++y) {
+        for (int32_t x = 0; x < cols; ++x) {
+            const auto grad = data[y * cols + x];
+            combine_grad[y * cols + x] = 0.5 * grad.x + 0.5 * grad.y;
+        }
+    }
+    cv::Mat mat(rows, cols, CV_32FC1, combine_grad.data());
+    cv::imwrite((DEBUG_PATH / name).generic_string(), mat);
+}
+
 PatchMatchStereo::PatchMatchStereo()
     : m_is_initialized(false), m_width(0), m_height(0) {}
 
 PatchMatchStereo::~PatchMatchStereo() {
     if (m_option.is_debug) {
-        if(!std::filesystem::exists(DEBUG_PATH)) {
+        if (!std::filesystem::exists(DEBUG_PATH)) {
             std::filesystem::create_directories(DEBUG_PATH);
         }
         OutputDebugImg(m_height, m_width, 1, m_left_gray.data(),
                        "left_gray.png");
         OutputDebugImg(m_height, m_width, 1, m_right_gray.data(),
                        "right_gray.png");
+        OutputDebugImg(m_height, m_width, m_left_grad.data(),
+                       "left_gradient.png");
+        OutputDebugImg(m_height, m_width, m_right_grad.data(),
+                       "right_gradient.png");
         OutputDebugImg(m_height, m_width, 1, m_left_cost.data(),
                        "left_cost.png");
         OutputDebugImg(m_height, m_width, 1, m_right_cost.data(),
@@ -93,6 +110,7 @@ bool PatchMatchStereo::Match(const uint8_t *left_img, const uint8_t *right_img,
     RandomInit();
 
     ComputeGray();
+    ComputeGradient();
 
     PlaneToDisparity();
 
@@ -160,6 +178,34 @@ void PatchMatchStereo::ComputeGray() {
     }
 }
 
+void PatchMatchStereo::ComputeGradient() {
+    // Sobel梯度算子
+    for (int32_t n = 0; n < 2; ++n) {
+        auto gray = n == 0 ? m_left_gray.data() : m_right_gray.data();
+        auto grad = n == 0 ? m_left_grad.data() : m_right_grad.data();
+        for (int y = 1; y < m_height - 1; ++y) {
+            for (int x = 1; x < m_width - 1; ++x) {
+                const auto grad_x = (-gray[(y - 1) * m_width + x - 1] +
+                                     gray[(y - 1) * m_width + x + 1]) +
+                                    (-2 * gray[y * m_width + x - 1] +
+                                     2 * gray[y * m_width + x + 1]) +
+                                    (-gray[(y + 1) * m_width + x - 1] +
+                                     gray[(y + 1) * m_width + x + 1]);
+                const auto grad_y = (-gray[(y - 1) * m_width + x - 1] -
+                                     2 * gray[(y - 1) * m_width + x] -
+                                     gray[(y - 1) * m_width + x + 1]) +
+                                    (gray[(y + 1) * m_width + x - 1] +
+                                     2 * gray[(y + 1) * m_width + x] +
+                                     gray[(y + 1) * m_width + x + 1]);
+
+                // clamp it to 0-255
+                grad[y * m_width + x].x = grad_x / 8.f;
+                grad[y * m_width + x].y = grad_y / 8.f;
+            }
+        }
+    }
+}
+
 void PatchMatchStereo::PlaneToDisparity() {
     std::cout << "computing plane to disparity" << std::endl;
     for (int k = 0; k < 2; ++k) {
@@ -173,4 +219,45 @@ void PatchMatchStereo::PlaneToDisparity() {
             }
         }
     }
+}
+
+CostComputerPMS::CostComputerPMS(const uint8_t *left_img,
+                                 const uint8_t *right_img,
+                                 const PatchMatchStereo::Gradient *left_grad,
+                                 const PatchMatchStereo::Gradient *right_grad,
+                                 int32_t width, int32_t height,
+                                 const PatchMatchStereo::Option &option)
+    : m_left_img(left_img),
+      m_right_img(right_img),
+      m_left_grad(left_grad),
+      m_right_grad(right_grad),
+      m_width(width),
+      m_height(height),
+      m_patch_size(option.patch_size),
+      m_min_disp(option.min_disparity),
+      m_max_disp(option.max_disparity),
+      m_alpha(option.alpha),
+      m_gamma(option.gamma),
+      m_tau_col(option.tau_col),
+      m_tau_grad(option.tau_grad) {}
+
+float CostComputerPMS::Compute(int32_t x, int32_t y, float d) const {
+    // 计算代价值，(1-a)*颜色空间距离+a*梯度空间距离
+    float xr = x - d;
+    const auto color_left = GetColor(m_left_img, x, y);
+    const auto color_right = GetColor(m_right_img, xr, y);
+
+    const auto dist_color =
+        std::min<float>(std::abs(color_left.r - color_right.r) +
+                            std::abs(color_left.g - color_right.g) +
+                            std::abs(color_left.b - color_right.b),
+                        m_tau_col);
+
+    const auto grad_left = GetGradient(m_left_grad, x, y);
+    const auto grad_right = GetGradient(m_right_grad, x, y);
+    const auto dist_grad =
+        std::min<float>(std::abs(grad_left.x - grad_right.x) +
+                            std::abs(grad_left.y - grad_right.y),
+                        m_tau_grad);
+    return (1 - m_alpha) * dist_color + m_alpha * dist_grad;
 }
