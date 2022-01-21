@@ -17,7 +17,8 @@ endif()
 
 add_executable(PatchMatch 
     src/main.cpp 
-    src/PatchMatchStereo.cpp)
+    src/PatchMatchStereo.cpp
+    src/PMSPropagation.cpp)
 
 target_compile_options(PatchMatch PUBLIC -Wall -Wextra -Wundef -pedantic -std=c++17)
 

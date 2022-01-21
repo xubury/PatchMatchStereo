@@ -1,4 +1,7 @@
 #include "PatchMatchStereo.hpp"
+#include "PMSPropagation.hpp"
+#include "Utils.hpp"
+
 #include <cstring>
 #include <iostream>
 #include <random>
@@ -67,7 +70,7 @@ bool PatchMatchStereo::Init(int32_t width, int32_t height,
     m_width = width;
     m_height = height;
     m_option = option;
-    std::cout << "initializing patch match stereo" << std::endl;
+    std::cout << "initializing patch match stereo..." << std::endl;
 
     //··· 开辟内存空间
     const int32_t img_size = width * height;
@@ -107,12 +110,37 @@ bool PatchMatchStereo::Match(const uint8_t *left_img, const uint8_t *right_img,
     m_left_img = left_img;
     m_right_img = right_img;
 
+    Timer timer;
+
+    std::cout << "initializing random plane..." << std::endl;
+    timer.Restart();
     RandomInit();
+    std::cout << "random plane init took " << timer.GetElapsedMS() << " ms. "
+              << std::endl;
 
+    std::cout << "computing gray scale image..." << std::endl;
+    timer.Restart();
     ComputeGray();
-    ComputeGradient();
+    std::cout << "gray scale image compute took " << timer.GetElapsedMS()
+              << " ms. " << std::endl;
 
+    std::cout << "computing image gradient..." << std::endl;
+    timer.Restart();
+    ComputeGradient();
+    std::cout << "image gradient compute took " << timer.GetElapsedMS()
+              << " ms. " << std::endl;
+
+    std::cout << "computing cost propagation..." << std::endl;
+    timer.Restart();
+    Propagation();
+    std::cout << "cost propagation took " << timer.GetElapsedMS() << " ms. "
+              << std::endl;
+
+    std::cout << "computing plane to disparity..." << std::endl;
+    timer.Restart();
     PlaneToDisparity();
+    std::cout << "plane to disparity compute took " << timer.GetElapsedMS()
+              << " ms. " << std::endl;
 
     if (left_disparity) {
         memcpy(left_disparity, m_left_disparity.data(),
@@ -123,7 +151,6 @@ bool PatchMatchStereo::Match(const uint8_t *left_img, const uint8_t *right_img,
 }
 
 void PatchMatchStereo::RandomInit() {
-    std::cout << "initializing random plane" << std::endl;
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> rand_d(m_option.min_disparity,
@@ -206,8 +233,18 @@ void PatchMatchStereo::ComputeGradient() {
     }
 }
 
+void PatchMatchStereo::Propagation() {
+    PMSPropagation left_propagation(
+        m_left_img, m_right_img, m_left_grad.data(), m_right_grad.data(),
+        m_width, m_height, m_option, m_left_plane.data(), m_right_plane.data(),
+        m_left_cost.data(), m_right_cost.data());
+    PMSPropagation right_propagation(
+        m_right_img, m_left_img, m_right_grad.data(), m_left_grad.data(),
+        m_width, m_height, m_option, m_right_plane.data(), m_left_plane.data(),
+        m_right_cost.data(), m_left_cost.data());
+}
+
 void PatchMatchStereo::PlaneToDisparity() {
-    std::cout << "computing plane to disparity" << std::endl;
     for (int k = 0; k < 2; ++k) {
         auto plane_ptr = k == 0 ? m_left_plane.data() : m_right_plane.data();
         auto disp_ptr =
@@ -219,45 +256,4 @@ void PatchMatchStereo::PlaneToDisparity() {
             }
         }
     }
-}
-
-CostComputerPMS::CostComputerPMS(const uint8_t *left_img,
-                                 const uint8_t *right_img,
-                                 const PatchMatchStereo::Gradient *left_grad,
-                                 const PatchMatchStereo::Gradient *right_grad,
-                                 int32_t width, int32_t height,
-                                 const PatchMatchStereo::Option &option)
-    : m_left_img(left_img),
-      m_right_img(right_img),
-      m_left_grad(left_grad),
-      m_right_grad(right_grad),
-      m_width(width),
-      m_height(height),
-      m_patch_size(option.patch_size),
-      m_min_disp(option.min_disparity),
-      m_max_disp(option.max_disparity),
-      m_alpha(option.alpha),
-      m_gamma(option.gamma),
-      m_tau_col(option.tau_col),
-      m_tau_grad(option.tau_grad) {}
-
-float CostComputerPMS::Compute(int32_t x, int32_t y, float d) const {
-    // 计算代价值，(1-a)*颜色空间距离+a*梯度空间距离
-    float xr = x - d;
-    const auto color_left = GetColor(m_left_img, x, y);
-    const auto color_right = GetColor(m_right_img, xr, y);
-
-    const auto dist_color =
-        std::min<float>(std::abs(color_left.r - color_right.r) +
-                            std::abs(color_left.g - color_right.g) +
-                            std::abs(color_left.b - color_right.b),
-                        m_tau_col);
-
-    const auto grad_left = GetGradient(m_left_grad, x, y);
-    const auto grad_right = GetGradient(m_right_grad, x, y);
-    const auto dist_grad =
-        std::min<float>(std::abs(grad_left.x - grad_right.x) +
-                            std::abs(grad_left.y - grad_right.y),
-                        m_tau_grad);
-    return (1 - m_alpha) * dist_color + m_alpha * dist_grad;
 }
