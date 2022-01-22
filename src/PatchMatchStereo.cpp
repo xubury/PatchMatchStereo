@@ -2,62 +2,75 @@
 #include <iostream>
 #include <random>
 #include <filesystem>
-#include <opencv2/opencv.hpp>
 
 #include "PMSPropagation.hpp"
 #include "Utils.hpp"
 
+#include "stb_image_write.h"
+
 const std::filesystem::path DEBUG_PATH = "img/debug";
 
-static void OutputDebugImg(int rows, int cols, int channels, uint8_t *data,
+static void OutputDebugImg(int width, int height, int channels, uint8_t *data,
                            const std::string &name) {
-    cv::Mat mat(rows, cols, channels == 3 ? CV_8UC3 : CV_8UC1, data);
-    cv::imwrite((DEBUG_PATH / name).generic_string(), mat);
+    std::filesystem::path path = DEBUG_PATH / name;
+    if (!path.has_extension()) {
+        path += ".png";
+    } else if (path.extension() != ".png") {
+        path.replace_extension(".png");
+    }
+    stbi_write_png(path.generic_string().c_str(), width, height, channels, data,
+                   0);
 }
 
-static void OutputDebugImg(int rows, int cols, int channels, float *data,
+static void OutputDebugImg(int width, int height, int channels, float *data,
                            const std::string &name) {
-    cv::Mat mat(rows, cols, channels == 3 ? CV_32FC3 : CV_32FC1, data);
-    cv::imwrite((DEBUG_PATH / name).generic_string(), mat);
+    std::filesystem::path path = DEBUG_PATH / name;
+    if (!path.has_extension()) {
+        path += ".hdr";
+    } else if (path.extension() != ".hdr") {
+        path.replace_extension(".hdr");
+    }
+    stbi_write_hdr(path.generic_string().c_str(), width, height, channels,
+                   data);
 }
 
-static void OutputDebugImg(int rows, int cols, PatchMatchStereo::Gradient *data,
+static void OutputDebugImg(int width, int height,
+                           PatchMatchStereo::Gradient *data,
                            const std::string &name) {
-    std::vector<float> combine_grad(rows * cols);
-    for (int32_t y = 0; y < rows; ++y) {
-        for (int32_t x = 0; x < cols; ++x) {
-            const auto grad = data[y * cols + x];
-            combine_grad[y * cols + x] = 0.5 * grad.x + 0.5 * grad.y;
+    std::vector<float> combine_grad(height * width);
+    for (int32_t y = 0; y < height; ++y) {
+        for (int32_t x = 0; x < width; ++x) {
+            const auto grad = data[y * width + x];
+            combine_grad[y * width + x] = 0.5 * grad.x + 0.5 * grad.y;
         }
     }
-    cv::Mat mat(rows, cols, CV_32FC1, combine_grad.data());
-    cv::imwrite((DEBUG_PATH / name).generic_string(), mat);
+    OutputDebugImg(width, height, 1, combine_grad.data(), name);
 }
 
 PatchMatchStereo::PatchMatchStereo()
     : m_is_initialized(false), m_width(0), m_height(0) {}
 
 PatchMatchStereo::~PatchMatchStereo() {
+    Timer timer;
     if (m_option.is_debug) {
+        std::cout << "writing debug images..." << std::endl;
+        timer.Restart();
         if (!std::filesystem::exists(DEBUG_PATH)) {
             std::filesystem::create_directories(DEBUG_PATH);
         }
-        OutputDebugImg(m_height, m_width, 1, m_left_gray.data(),
-                       "left_gray.png");
-        OutputDebugImg(m_height, m_width, 1, m_right_gray.data(),
-                       "right_gray.png");
-        OutputDebugImg(m_height, m_width, m_left_grad.data(),
-                       "left_gradient.png");
-        OutputDebugImg(m_height, m_width, m_right_grad.data(),
-                       "right_gradient.png");
-        OutputDebugImg(m_height, m_width, 1, m_left_cost.data(),
-                       "left_cost.png");
-        OutputDebugImg(m_height, m_width, 1, m_right_cost.data(),
-                       "right_cost.png");
-        OutputDebugImg(m_height, m_width, 1, m_left_disparity.data(),
-                       "left_disparity.png");
-        OutputDebugImg(m_height, m_width, 1, m_right_disparity.data(),
-                       "right_disparity.png");
+        OutputDebugImg(m_width, m_height, 1, m_left_gray.data(), "left_gray");
+        OutputDebugImg(m_width, m_height, 1, m_right_gray.data(), "right_gray");
+        OutputDebugImg(m_width, m_height, m_left_grad.data(), "left_gradient");
+        OutputDebugImg(m_width, m_height, m_right_grad.data(),
+                       "right_gradient");
+        OutputDebugImg(m_width, m_height, 1, m_left_cost.data(), "left_cost");
+        OutputDebugImg(m_width, m_height, 1, m_right_cost.data(), "right_cost");
+        OutputDebugImg(m_width, m_height, 1, m_left_disparity.data(),
+                       "left_disparity");
+        OutputDebugImg(m_width, m_height, 1, m_right_disparity.data(),
+                       "right_disparity");
+        std::cout << "images writing took " << timer.GetElapsedMS() << " ms."
+                  << std::endl;
     }
 }
 
@@ -73,8 +86,8 @@ bool PatchMatchStereo::Init(int32_t width, int32_t height,
 
     //··· 开辟内存空间
     const int32_t img_size = width * height;
-    // const int32_t disp_range = option.max_disparity - option.min_disparity;
-    // 灰度数据
+    // const int32_t disp_range = option.max_disparity -
+    // option.min_disparity; 灰度数据
     m_left_gray.resize(img_size);
     m_right_gray.resize(img_size);
     // 梯度数据
