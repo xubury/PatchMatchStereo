@@ -28,9 +28,12 @@ int main(int argc, char *args[]) {
 
     std::vector<float> disparity_map(width * height);
     PatchMatchStereo stereo;
+    PatchMatchStereo::Option option;
+    option.num_iters = 3;
+
     std::cout << "starting PMS..." << std::endl;
     timer.Restart();
-    stereo.Init(width, height, PatchMatchStereo::Option());
+    stereo.Init(width, height, option);
     stereo.Match(left_img, right_img, disparity_map.data());
     std::cout << "PMS took " << timer.GetElapsedMS() << " ms. " << std::endl;
 

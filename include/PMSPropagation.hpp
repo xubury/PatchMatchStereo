@@ -73,6 +73,28 @@ class PMSPropagation {
    private:
     void ComputeCostData();
 
+    /**
+     * \brief 空间传播
+     * \param x 像素x坐标
+     * \param y 像素y坐标
+     * \param direction 传播方向
+     */
+    void SpatialPropagation(int32_t x, int32_t y, int32_t direction);
+
+    /**
+     * \brief 视图传播
+     * \param x 像素x坐标
+     * \param y 像素y坐标
+     */
+    void ViewPropagation(int32_t x, int32_t y);
+
+    /**
+     * \brief 平面优化
+     * \param x 像素x坐标
+     * \param y 像素y坐标
+     */
+    void PlaneRefine(int32_t x, int32_t y);
+
     CostComputerPMS m_left_cost_computer;
     CostComputerPMS m_right_cost_computer;
 
@@ -92,6 +114,8 @@ class PMSPropagation {
 
     float* m_left_cost;
     float* m_right_cost;
+
+    int32_t m_num_iter;
 };
 
 #endif

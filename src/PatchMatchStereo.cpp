@@ -24,14 +24,11 @@ static void OutputDebugImg(int width, int height, int channels, uint8_t *data,
 
 static void OutputDebugImg(int width, int height, int channels, float *data,
                            const std::string &name) {
-    std::filesystem::path path = DEBUG_PATH / name;
-    if (!path.has_extension()) {
-        path += ".hdr";
-    } else if (path.extension() != ".hdr") {
-        path.replace_extension(".hdr");
+    std::vector<uint8_t> integer_img(width * height * channels);
+    for (size_t i = 0; i < integer_img.size(); ++i) {
+        integer_img[i] = std::round(data[i]) / 64 * 256;
     }
-    stbi_write_hdr(path.generic_string().c_str(), width, height, channels,
-                   data);
+    OutputDebugImg(width, height, channels, integer_img.data(), name);
 }
 
 static void OutputDebugImg(int width, int height,
@@ -244,6 +241,10 @@ void PatchMatchStereo::ComputeGradient() {
 }
 
 void PatchMatchStereo::Propagation() {
+    Timer timer;
+
+    std::cout << "initializing cost data..." << std::endl;
+    timer.Restart();
     PMSPropagation left_propagation(
         m_left_img, m_right_img, m_left_grad.data(), m_right_grad.data(),
         m_width, m_height, m_option, m_left_plane.data(), m_right_plane.data(),
@@ -252,10 +253,17 @@ void PatchMatchStereo::Propagation() {
         m_right_img, m_left_img, m_right_grad.data(), m_left_grad.data(),
         m_width, m_height, m_option, m_right_plane.data(), m_left_plane.data(),
         m_right_cost.data(), m_left_cost.data());
+    std::cout << "cost data initialization took " << timer.GetElapsedMS()
+              << " ms." << std::endl;
 
     for (int i = 0; i < m_option.num_iters; ++i) {
+        std::cout << "computing propagation " << i + 1 << " of "
+                  << m_option.num_iters << "..." << std::endl;
+        timer.Restart();
         left_propagation.DoPropagation();
         right_propagation.DoPropagation();
+        std::cout << "propagation took " << timer.GetElapsedMS() << " ms."
+                  << std::endl;
     }
 }
 

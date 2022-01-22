@@ -90,7 +90,7 @@ class PatchMatchStereo {
 
         bool is_debug;
         Option()
-            : patch_size(25),
+            : patch_size(35),
               min_disparity(0),
               max_disparity(64),
               gamma(10.f),
@@ -98,9 +98,9 @@ class PatchMatchStereo {
               tau_col(10.f),
               tau_grad(2.0f),
               num_iters(3),
-              is_check_lr(false),
-              lrcheck_thresh(0),
-              is_fill_hole(false),
+              is_check_lr(true),
+              lrcheck_thresh(1.0f),
+              is_fill_hole(true),
               is_force_fpw(false),
               is_integer_disp(false),
               is_debug(true) {}

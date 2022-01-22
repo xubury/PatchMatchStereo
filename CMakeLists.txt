@@ -13,8 +13,8 @@ else()
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/release)
 endif()
 
-add_executable(PatchMatch 
-    src/main.cpp 
+add_executable(PatchMatch
+    src/main.cpp
     src/PatchMatchStereo.cpp
     src/PMSPropagation.cpp
     src/Utils.cpp
