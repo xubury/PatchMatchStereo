@@ -65,6 +65,8 @@ struct DisparityPlane {
     bool operator!=(const DisparityPlane& v) const { return p != v.p; }
 };
 
+class PMSPropagation;
+
 class PatchMatchStereo {
    public:
     struct Option {
@@ -118,14 +120,25 @@ class PatchMatchStereo {
                float* left_disparity);
 
    private:
-    void RandomInit();
-
-    void ComputeGray();
-    void ComputeGradient();
+    void PreCompute();
 
     void Propagation();
 
-    void PlaneToDisparity();
+    void DoPropagation(PMSPropagation& propagation,
+                       const std::string& view_name);
+
+    void OutputDisparity(float* disparity);
+
+    static void RandomInit(DisparityPlane* plane, float* disparity, int width,
+                           int height, const Option& option, int8_t sign);
+
+    static void ComputeGray(const uint8_t* img, uint8_t* gray, int32_t width,
+                            int32_t height);
+    static void ComputeGradient(const uint8_t* gray, Gradient* grad,
+                                int32_t width, int32_t height);
+
+    static void PlaneToDisparity(const DisparityPlane* plane, float* disparity,
+                                 int32_t width, int32_t height);
 
     Option m_option;
 
