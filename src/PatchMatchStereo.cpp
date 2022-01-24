@@ -242,16 +242,19 @@ void PatchMatchStereo::Propagation() {
 }
 
 void PatchMatchStereo::OutputDisparity(float *disparity) {
-    ThreadPool pool(2);
+    {
+        ThreadPool pool(2);
 
-    pool.Queue(PatchMatchStereo::PlaneToDisparity, m_left_plane.data(),
-               m_left_disparity.data(), m_width, m_height);
-    pool.Queue(PatchMatchStereo::PlaneToDisparity, m_right_plane.data(),
-               m_right_disparity.data(), m_width, m_height);
+        pool.Queue(PatchMatchStereo::PlaneToDisparity, m_left_plane.data(),
+                   m_left_disparity.data(), m_width, m_height);
+        pool.Queue(PatchMatchStereo::PlaneToDisparity, m_right_plane.data(),
+                   m_right_disparity.data(), m_width, m_height);
+    }
 
     if (disparity) {
         memcpy(disparity, m_left_disparity.data(),
-               m_width * m_height * sizeof(float));
+               m_width * m_height *
+                   sizeof(decltype(m_left_disparity)::value_type));
     }
 }
 
