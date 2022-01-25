@@ -28,7 +28,7 @@ static void OutputDebugImg(int32_t width, int32_t height, int32_t channels,
                            float *data, const std::string &name) {
     std::vector<uint8_t> integer_img(width * height * channels);
     for (size_t i = 0; i < integer_img.size(); ++i) {
-        integer_img[i] = std::round(data[i] / 64 * 255);
+        integer_img[i] = std::round(data[i]);
     }
     OutputDebugImg(width, height, channels, integer_img.data(), name);
 }
@@ -252,13 +252,15 @@ void PatchMatchStereo::Propagation() {
     std::cout << "cost data initialization took " << timer.GetElapsedMS()
               << " ms." << std::endl;
 
-    DoPropagation(left_propagation, "left");
-    DoPropagation(right_propagation, "right");
-    // ThreadPool pool(2);
-    // pool.Queue(&PatchMatchStereo::DoPropagation, this, left_propagation,
-    //            "left");
-    // pool.Queue(&PatchMatchStereo::DoPropagation, this, right_propagation,
-    //            "right");
+    for (int32_t i = 0; i < m_option.num_iters; ++i) {
+        std::cout << "computing propagation " << i + 1 << " of "
+                  << m_option.num_iters << "..." << std::endl;
+        timer.Restart();
+        left_propagation.DoPropagation();
+        right_propagation.DoPropagation();
+        std::cout << "propagation took " << timer.GetElapsedMS() << " ms."
+                  << std::endl;
+    }
 }
 
 void PatchMatchStereo::LRCheck() {
@@ -270,8 +272,8 @@ void PatchMatchStereo::LRCheck() {
         auto &mismatches = k == 0 ? m_left_mismatches : m_right_mismatches;
 
         mismatches.clear();
-        for (int32_t y = 0; y < m_height; y++) {
-            for (int32_t x = 0; x < m_width; x++) {
+        for (int32_t y = 0; y < m_height; ++y) {
+            for (int32_t x = 0; x < m_width; ++x) {
                 // 左影像视差值
                 auto &disp = disp_left[y * m_width + x];
 
@@ -375,28 +377,6 @@ void PatchMatchStereo::OutputDisparity(float *disparity) {
         memcpy(disparity, m_left_disparity.data(),
                m_width * m_height *
                    sizeof(decltype(m_left_disparity)::value_type));
-    }
-}
-
-std::mutex cout_mutex;
-
-void PatchMatchStereo::DoPropagation(PMSPropagation &propagation,
-                                     const std::string &view_name) {
-    Timer timer;
-    for (int32_t i = 0; i < m_option.num_iters; ++i) {
-        {
-            std::lock_guard<std::mutex> lock(cout_mutex);
-            std::cout << "computing propagation " << i + 1 << " of "
-                      << m_option.num_iters << " for " << view_name << "..."
-                      << std::endl;
-        }
-        timer.Restart();
-        propagation.DoPropagation();
-        {
-            std::lock_guard<std::mutex> lock(cout_mutex);
-            std::cout << "propagation for " << view_name << " took "
-                      << timer.GetElapsedMS() << " ms." << std::endl;
-        }
     }
 }
 

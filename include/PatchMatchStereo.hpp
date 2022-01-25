@@ -129,9 +129,6 @@ class PatchMatchStereo {
 
     void FillHole();
 
-    void DoPropagation(PMSPropagation& propagation,
-                       const std::string& view_name);
-
     void OutputDisparity(float* disparity);
 
     static void RandomInit(DisparityPlane* plane, float* disparity, int width,

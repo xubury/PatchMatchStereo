@@ -9,20 +9,22 @@ CostComputerPMS::CostComputerPMS(const uint8_t *left_img,
                                  const PatchMatchStereo::Gradient *left_grad,
                                  const PatchMatchStereo::Gradient *right_grad,
                                  int32_t width, int32_t height,
-                                 const PatchMatchStereo::Option &option)
+                                 int32_t patch_size, int32_t min_disp,
+                                 int32_t max_disp, float alpha, float gamma,
+                                 float tau_col, float tau_grad)
     : m_left_img(left_img),
       m_right_img(right_img),
       m_left_grad(left_grad),
       m_right_grad(right_grad),
       m_width(width),
       m_height(height),
-      m_patch_size(option.patch_size),
-      m_min_disp(option.min_disparity),
-      m_max_disp(option.max_disparity),
-      m_alpha(option.alpha),
-      m_gamma(option.gamma),
-      m_tau_col(option.tau_col),
-      m_tau_grad(option.tau_grad) {}
+      m_patch_size(patch_size),
+      m_min_disp(min_disp),
+      m_max_disp(max_disp),
+      m_alpha(alpha),
+      m_gamma(gamma),
+      m_tau_col(tau_col),
+      m_tau_grad(tau_grad) {}
 
 float CostComputerPMS::Compute(int32_t x, int32_t y, float d) const {
     // 计算代价值，(1-a)*颜色空间距离+a*梯度空间距离
@@ -97,8 +99,8 @@ float CostComputerPMS::ComputeAggregation(int32_t x, int32_t y,
             const auto w = exp(-dc / m_gamma);
 
             // 聚合代价
-            const auto left_grad = GetGradient(m_left_grad, xc, yr);
-            cost += w * Compute(col_q, left_grad, xc, yr, d);
+            const auto grad_q = GetGradient(m_left_grad, xc, yr);
+            cost += w * Compute(col_q, grad_q, xc, yr, d);
         }
     }
     return cost;
@@ -111,9 +113,13 @@ PMSPropagation::PMSPropagation(
     const PatchMatchStereo::Option &option, DisparityPlane *left_plane,
     DisparityPlane *right_plane, float *left_cost, float *right_cost)
     : m_left_cost_computer(left_img, right_img, left_grad, right_grad, width,
-                           height, option),
+                           height, option.patch_size, option.min_disparity,
+                           option.max_disparity, option.alpha, option.gamma,
+                           option.tau_col, option.tau_grad),
       m_right_cost_computer(right_img, left_img, right_grad, left_grad, width,
-                            height, option),
+                            height, option.patch_size, -option.max_disparity,
+                            -option.min_disparity, option.alpha, option.gamma,
+                            option.tau_col, option.tau_grad),
       m_left_img(left_img),
       m_right_img(right_img),
       m_left_grad(left_grad),
@@ -227,8 +233,8 @@ void PMSPropagation::PlaneRefine(int32_t x, int32_t y) {
         const float d_p_new = d_p + disp_rd;
         if (d_p_new < m_option.min_disparity ||
             d_p_new > m_option.max_disparity) {
-            disp_update /= 2;
-            norm_update /= 2;
+            disp_update /= 2.0f;
+            norm_update /= 2.0f;
             continue;
         }
 

@@ -8,7 +8,9 @@ class CostComputerPMS {
     CostComputerPMS(const uint8_t* left_img, const uint8_t* right_img,
                     const PatchMatchStereo::Gradient* left_grad,
                     const PatchMatchStereo::Gradient* right_grad, int32_t width,
-                    int32_t height, const PatchMatchStereo::Option& option);
+                    int32_t height, int32_t patch_size, int32_t min_disp,
+                    int32_t max_disp, float alpha, float gamma, float tau_col,
+                    float tau_grad);
 
     float Compute(int32_t x, int32_t y, float d) const;
 
