@@ -10,6 +10,8 @@
 
 const std::filesystem::path DEBUG_PATH = "img/debug";
 
+constexpr auto INVALID_FLOAT = std::numeric_limits<float>::infinity();
+
 static void OutputDebugImg(int32_t width, int32_t height, int32_t channels,
                            uint8_t *data, const std::string &name) {
     std::filesystem::path path = DEBUG_PATH / name;
@@ -26,7 +28,7 @@ static void OutputDebugImg(int32_t width, int32_t height, int32_t channels,
                            float *data, const std::string &name) {
     std::vector<uint8_t> integer_img(width * height * channels);
     for (size_t i = 0; i < integer_img.size(); ++i) {
-        integer_img[i] = std::round(data[i]) / 64 * 255;
+        integer_img[i] = std::round(data[i] / 64 * 255);
     }
     OutputDebugImg(width, height, channels, integer_img.data(), name);
 }
@@ -121,6 +123,17 @@ bool PatchMatchStereo::Match(const uint8_t *left_img, const uint8_t *right_img,
     PreCompute();
 
     Propagation();
+
+    if (m_option.is_check_lr) {
+        LRCheck();
+        std::cout << "left mismatches: " << m_left_mismatches.size()
+                  << " right mismatches: " << m_right_mismatches.size()
+                  << std::endl;
+    }
+
+    if (m_option.is_fill_hole) {
+        FillHole();
+    }
 
     OutputDisparity(left_disparity);
 
@@ -219,26 +232,133 @@ void PatchMatchStereo::PreCompute() {
 }
 
 void PatchMatchStereo::Propagation() {
-    ThreadPool pool(2);
     Timer timer;
 
     std::cout << "initializing cost propagation data" << std::endl;
     timer.Restart();
+
+    Option option_right = m_option;
+    option_right.min_disparity = -m_option.max_disparity;
+    option_right.max_disparity = -m_option.min_disparity;
+
     PMSPropagation left_propagation(
         m_left_img, m_right_img, m_left_grad.data(), m_right_grad.data(),
         m_width, m_height, m_option, m_left_plane.data(), m_right_plane.data(),
         m_left_cost.data(), m_right_cost.data());
     PMSPropagation right_propagation(
         m_right_img, m_left_img, m_right_grad.data(), m_left_grad.data(),
-        m_width, m_height, m_option, m_right_plane.data(), m_left_plane.data(),
-        m_right_cost.data(), m_left_cost.data());
+        m_width, m_height, option_right, m_right_plane.data(),
+        m_left_plane.data(), m_right_cost.data(), m_left_cost.data());
     std::cout << "cost data initialization took " << timer.GetElapsedMS()
               << " ms." << std::endl;
 
-    pool.Queue(&PatchMatchStereo::DoPropagation, this, left_propagation,
-               "left");
-    pool.Queue(&PatchMatchStereo::DoPropagation, this, right_propagation,
-               "right");
+    DoPropagation(left_propagation, "left");
+    DoPropagation(right_propagation, "right");
+    // ThreadPool pool(2);
+    // pool.Queue(&PatchMatchStereo::DoPropagation, this, left_propagation,
+    //            "left");
+    // pool.Queue(&PatchMatchStereo::DoPropagation, this, right_propagation,
+    //            "right");
+}
+
+void PatchMatchStereo::LRCheck() {
+    for (int k = 0; k < 2; ++k) {
+        auto *disp_left =
+            k == 0 ? m_left_disparity.data() : m_right_disparity.data();
+        auto *disp_right =
+            k == 0 ? m_right_disparity.data() : m_left_disparity.data();
+        auto &mismatches = k == 0 ? m_left_mismatches : m_right_mismatches;
+
+        mismatches.clear();
+        for (int32_t y = 0; y < m_height; y++) {
+            for (int32_t x = 0; x < m_width; x++) {
+                // 左影像视差值
+                auto &disp = disp_left[y * m_width + x];
+
+                if (disp == INVALID_FLOAT) {
+                    mismatches.emplace_back(x, y);
+                    continue;
+                }
+
+                // 根据视差值找到右影像上对应的同名像素
+                const auto col_right = lround(x - disp);
+
+                if (col_right >= 0 && col_right < m_width) {
+                    // 右影像上同名像素的视差值
+                    auto &disp_r = disp_right[y * m_width + col_right];
+
+                    // 判断两个视差值是否一致（差值在阈值内为一致）
+                    // 在本代码里，左右视图的视差值符号相反
+                    if (std::abs(disp + disp_r) > m_option.lrcheck_thresh) {
+                        // 让视差值无效
+                        disp = INVALID_FLOAT;
+                        mismatches.emplace_back(x, y);
+                    }
+                } else {
+                    // 通过视差值在右影像上找不到同名像素（超出影像范围）
+                    disp = INVALID_FLOAT;
+                    mismatches.emplace_back(x, y);
+                }
+            }
+        }
+    }
+}
+
+void PatchMatchStereo::FillHole() {
+    const auto task = [this](DisparityPlane *plane, float *disparity,
+                             std::vector<Vector2i> &mismatches) {
+        if (mismatches.empty()) {
+            return;
+        }
+        // 存储每个待填充像素的视差
+        std::vector<float> fill_disps(mismatches.size());
+        for (auto n = 0u; n < mismatches.size(); n++) {
+            auto &pix = mismatches[n];
+            const auto x = pix.x;
+            const auto y = pix.y;
+            std::vector<DisparityPlane> planes;
+
+            // 向左向右各搜寻第一个有效像素，记录平面
+            auto xs = x + 1;
+            while (xs < m_width) {
+                if (disparity[y * m_width + xs] != INVALID_FLOAT) {
+                    planes.push_back(plane[y * m_width + xs]);
+                    break;
+                }
+                ++xs;
+            }
+            xs = x - 1;
+            while (xs >= 0) {
+                if (disparity[y * m_width + xs] != INVALID_FLOAT) {
+                    planes.push_back(plane[y * m_width + xs]);
+                    break;
+                }
+                --xs;
+            }
+
+            if (planes.empty()) {
+                continue;
+            } else if (planes.size() == 1u) {
+                fill_disps[n] = planes[0].GetDisparity(x, y);
+            } else {
+                // 选择较小的视差
+                const auto d1 = planes[0].GetDisparity(x, y);
+                const auto d2 = planes[1].GetDisparity(x, y);
+                fill_disps[n] = abs(d1) < abs(d2) ? d1 : d2;
+            }
+        }
+        for (auto n = 0u; n < mismatches.size(); n++) {
+            auto &pix = mismatches[n];
+            const int32_t x = pix.x;
+            const int32_t y = pix.y;
+            disparity[y * m_width + x] = fill_disps[n];
+        }
+    };
+    ThreadPool pool(2);
+    pool.Queue(task, m_left_plane.data(), m_left_disparity.data(),
+               m_left_mismatches);
+    pool.Queue(task, m_right_plane.data(), m_right_disparity.data(),
+               m_right_mismatches);
 }
 
 void PatchMatchStereo::OutputDisparity(float *disparity) {

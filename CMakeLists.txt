@@ -22,5 +22,9 @@ add_executable(PatchMatch
 
 target_compile_options(PatchMatch PUBLIC -Wall -Wextra -Wundef -pedantic -std=c++17)
 
-target_link_libraries(PatchMatch glm)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(PatchMatch PUBLIC ${CMAKE_DL_LIBS} pthread)
+endif()
+
+target_link_libraries(PatchMatch PUBLIC glm)
 target_include_directories(PatchMatch PUBLIC include)

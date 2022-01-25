@@ -10,6 +10,7 @@
 #include <glm/glm.hpp>
 using Color = glm::i8vec3;
 using Vector3f = glm::vec3;
+using Vector2i = glm::i32vec2;
 
 inline const auto& Dot =
     static_cast<float (*)(const Vector3f&, const Vector3f&)>(glm::dot);
@@ -124,6 +125,10 @@ class PatchMatchStereo {
 
     void Propagation();
 
+    void LRCheck();
+
+    void FillHole();
+
     void DoPropagation(PMSPropagation& propagation,
                        const std::string& view_name);
 
@@ -164,6 +169,9 @@ class PatchMatchStereo {
 
     std::vector<float> m_left_disparity;
     std::vector<float> m_right_disparity;
+
+    std::vector<Vector2i> m_left_mismatches;
+    std::vector<Vector2i> m_right_mismatches;
 };
 
 #endif  // !PATCH_MATCH_STEREO_HPP

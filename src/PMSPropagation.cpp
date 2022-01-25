@@ -283,7 +283,7 @@ void PMSPropagation::ViewPropagation(int32_t x, int32_t y) {
     const float d_p = plane_p.GetDisparity(x, y);
 
     // 计算右视图列号
-    const int32_t xr = std::round(x - d_p);
+    const int32_t xr = std::lround(x - d_p);
     if (xr < 0 || xr >= m_width) {
         return;
     }
