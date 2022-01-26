@@ -381,9 +381,77 @@ void PatchMatchStereo::FillHole() {
             disparity[y * m_width + x] = fill_disps[n];
         }
     };
-    ThreadPool pool(2);
-    pool.Queue(task, m_left_disparity.data(), m_left_mismatches);
-    pool.Queue(task, m_right_disparity.data(), m_right_mismatches);
+    ThreadPool pool(std::thread::hardware_concurrency());
+    auto left_ret =
+        pool.Queue(task, m_left_disparity.data(), m_left_mismatches);
+    auto right_ret =
+        pool.Queue(task, m_right_disparity.data(), m_right_mismatches);
+
+    left_ret.get();
+    pool.Queue(&PatchMatchStereo::WeightMedianFilter, this, m_left_img,
+               m_left_mismatches, m_left_disparity.data());
+    right_ret.get();
+    pool.Queue(&PatchMatchStereo::WeightMedianFilter, this, m_right_img,
+               m_right_mismatches, m_right_disparity.data());
+}
+
+void PatchMatchStereo::WeightMedianFilter(
+    const uint8_t *img_data, const std::vector<Vector2i> &mismatches,
+    float *disparity) const {
+    const int32_t wnd_size2 = m_option.patch_size / 2;
+
+    const auto color = [](const uint8_t *img_data, int32_t width, int32_t x,
+                          int32_t y) -> Color {
+        auto *pixel = img_data + y * width * 3 + 3 * x;
+        return {pixel[0], pixel[1], pixel[2]};
+    };
+    // 带权视差集
+    std::vector<std::pair<float, float>> disps;
+    disps.reserve(m_option.patch_size * m_option.patch_size);
+
+    for (auto &pix : mismatches) {
+        const int32_t x = pix.x;
+        const int32_t y = pix.y;
+        // weighted median filter
+        disps.clear();
+        const auto &col_p = color(img_data, m_width, x, y);
+        float total_w = 0.0f;
+        for (int32_t r = -wnd_size2; r <= wnd_size2; r++) {
+            for (int32_t c = -wnd_size2; c <= wnd_size2; c++) {
+                const int32_t yr = y + r;
+                const int32_t xc = x + c;
+                if (yr < 0 || yr >= m_height || xc < 0 || xc >= m_width) {
+                    continue;
+                }
+                const auto &disp = disparity[yr * m_width + xc];
+                if (disp == INVALID_FLOAT) {
+                    continue;
+                }
+                // 计算权值
+                const auto &col_q = color(img_data, m_width, xc, yr);
+                const auto dc = abs(col_p.r - col_q.r) +
+                                abs(col_p.g - col_q.g) + abs(col_p.b - col_q.b);
+                const auto w = exp(-dc / m_option.gamma);
+                total_w += w;
+
+                // 存储带权视差
+                disps.emplace_back(disp, w);
+            }
+        }
+
+        // --- 取加权中值
+        // 按视差值排序
+        std::sort(disps.begin(), disps.end());
+        const float median_w = total_w / 2;
+        float w = 0.0f;
+        for (const auto &wd : disps) {
+            w += wd.second;
+            if (w >= median_w) {
+                disparity[y * m_width + x] = wd.first;
+                break;
+            }
+        }
+    }
 }
 
 void PatchMatchStereo::PlaneToDisparity(const DisparityPlane *plane,

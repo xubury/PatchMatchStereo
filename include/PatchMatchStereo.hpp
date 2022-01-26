@@ -129,6 +129,10 @@ class PatchMatchStereo {
 
     void FillHole();
 
+    void WeightMedianFilter(const uint8_t* img_ptr,
+                            const std::vector<Vector2i>& mismatches,
+                            float* disparity) const;
+
     static void RandomInit(DisparityPlane* plane, float* disparity, int width,
                            int height, const Option& option, int8_t sign);
 
