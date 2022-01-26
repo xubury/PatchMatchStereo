@@ -42,7 +42,7 @@ float CostComputerPMS::Compute(int32_t x, int32_t y, float d) const {
                         m_tau_col);
 
     const auto grad_left = GetGradient(m_left_grad, x, y);
-    const auto grad_right = GetGradient(m_right_grad, x, y);
+    const auto grad_right = GetGradient(m_right_grad, xr, y);
     const auto dist_grad =
         std::min<float>(std::abs(grad_left.x - grad_right.x) +
                             std::abs(grad_left.y - grad_right.y),
@@ -65,7 +65,7 @@ float CostComputerPMS::Compute(const Color &color,
             std::abs(color.b - color_right.b),
         m_tau_col);
 
-    const auto grad_right = GetGradient(m_right_grad, x, y);
+    const auto grad_right = GetGradient(m_right_grad, xr, y);
     const auto dist_grad =
         std::min<float>(std::abs(gradient.x - grad_right.x) +
                             std::abs(gradient.y - grad_right.y),
@@ -94,8 +94,9 @@ float CostComputerPMS::ComputeAggregation(int32_t x, int32_t y,
 
             // 计算权值
             const auto &col_q = GetColor(m_left_img, xc, yr);
-            const auto dc = abs(col_p.r - col_q.r) + abs(col_p.g - col_q.g) +
-                            abs(col_p.b - col_q.b);
+            const auto dc = std::abs(col_p.r - col_q.r) +
+                            std::abs(col_p.g - col_q.g) +
+                            std::abs(col_p.b - col_q.b);
             const auto w = exp(-dc / m_gamma);
 
             // 聚合代价
@@ -157,7 +158,7 @@ void PMSPropagation::DoPropagation() {
 void PMSPropagation::ComputeCostData() {
     for (int32_t y = 0; y < m_height; y++) {
         for (int32_t x = 0; x < m_width; x++) {
-            const int32_t p = y * m_width + x;
+            const size_t p = y * m_width + x;
             const auto &plane_p = m_left_plane[p];
             m_left_cost[p] =
                 m_left_cost_computer.ComputeAggregation(x, y, plane_p);
@@ -171,7 +172,7 @@ void PMSPropagation::SpatialPropagation(int32_t x, int32_t y,
     // 空间传播
 
     // 获取p当前的视差平面并计算代价
-    const int32_t p = y * m_width + x;
+    const size_t p = y * m_width + x;
     auto &plane_p = m_left_plane[p];
     auto &cost_p = m_left_cost[p];
 
@@ -209,7 +210,7 @@ void PMSPropagation::PlaneRefine(int32_t x, int32_t y) {
     // 平面优化
 
     // 像素p的平面、代价、视差、法线
-    const int32_t p = y * m_width + x;
+    const size_t p = y * m_width + x;
     auto &plane_p = m_left_plane[p];
     auto &cost_p = m_left_cost[p];
 
@@ -283,7 +284,7 @@ void PMSPropagation::ViewPropagation(int32_t x, int32_t y) {
     // 搜索p在右视图的同名点q，更新q的平面
 
     // 左视图匹配点p的位置及其视差平面
-    const int32_t p = y * m_width + x;
+    const size_t p = y * m_width + x;
     const auto &plane_p = m_left_plane[p];
 
     const float d_p = plane_p.GetDisparity(x, y);
@@ -294,7 +295,7 @@ void PMSPropagation::ViewPropagation(int32_t x, int32_t y) {
         return;
     }
 
-    const int32_t q = y * m_width + xr;
+    const size_t q = y * m_width + xr;
     auto &plane_q = m_right_plane[q];
     auto &cost_q = m_right_cost[q];
 

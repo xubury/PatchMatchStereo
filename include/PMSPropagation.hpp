@@ -21,20 +21,41 @@ class CostComputerPMS {
     float ComputeAggregation(int32_t x, int32_t y,
                              const DisparityPlane& p) const;
 
-    PatchMatchStereo::Gradient GetGradient(
-        const PatchMatchStereo::Gradient* data, int32_t x, int32_t y) const {
+    Vector2i GetGradient(const PatchMatchStereo::Gradient* data, int32_t x,
+                         int32_t y) const {
         return data[y * m_width + x];
     }
-    Color GetColor(const uint8_t* data, float x, int32_t y) const {
-        Color color;
-        int32_t x1 = std::floor(x);
-        int32_t x2 = std::ceil(x);
-        float offset = x - x1;
+
+    Vector2f GetGradient(const PatchMatchStereo::Gradient* grad_data, float x,
+                         int32_t y) const {
+        const int32_t x1 = std::floor(x);
+        const int32_t x2 = std::ceil(x);
+        const float ofs = x - x1;
+
+        const auto& g1 = grad_data[y * m_width + x1];
+        const auto& g2 = (x2 < m_width) ? grad_data[y * m_width + x2] : g1;
+
+        return {(1 - ofs) * g1.x + ofs * g2.x, (1 - ofs) * g1.y + ofs * g2.y};
+    }
+
+    Color GetColor(const uint8_t* data, int32_t x, int32_t y) const {
+        const int channels = 3;
+        auto* pixel = data + y * m_width * channels + channels * x;
+        return {pixel[0], pixel[1], pixel[2]};
+    }
+
+    Vector3f GetColor(const uint8_t* data, float x, int32_t y) const {
+        Vector3f color;
+        const int channels = 3;
+        const int32_t x1 = std::floor(x);
+        const int32_t x2 = std::ceil(x);
+        const float offset = x - x1;
         for (int32_t i = 0; i < 3; ++i) {
-            const auto g1 = data[y * m_width * 3 + 3 * x1 + i];
-            const auto g2 =
-                (x2 < m_width) ? data[y * m_width * 3 + 3 * x2 + i] : g1;
-            color[i] = std::round((1 - offset) * g1 + offset * g2);
+            const float g1 = data[y * m_width * channels + channels * x1 + i];
+            const float g2 =
+                x2 < m_width ? data[y * m_width * channels + channels * x2 + i]
+                             : g1;
+            color[i] = (1 - offset) * g1 + offset * g2;
         }
         return color;
     }

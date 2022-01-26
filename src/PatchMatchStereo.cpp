@@ -25,10 +25,13 @@ static void OutputDebugImg(int32_t width, int32_t height, int32_t channels,
 }
 
 static void OutputDebugImg(int32_t width, int32_t height, int32_t channels,
-                           float *data, const std::string &name) {
+                           float *data, float min, float max,
+                           const std::string &name) {
     std::vector<uint8_t> integer_img(width * height * channels);
     for (size_t i = 0; i < integer_img.size(); ++i) {
-        integer_img[i] = std::round(data[i]);
+        integer_img[i] = std::round(
+            data[i] / (max - min) *
+            std::numeric_limits<decltype(integer_img)::value_type>::max());
     }
     OutputDebugImg(width, height, channels, integer_img.data(), name);
 }
@@ -37,13 +40,18 @@ static void OutputDebugImg(int32_t width, int32_t height,
                            PatchMatchStereo::Gradient *data,
                            const std::string &name) {
     std::vector<float> combine_grad(height * width);
+    float min = std::numeric_limits<float>::max();
+    float max = std::numeric_limits<float>::min();
     for (int32_t y = 0; y < height; ++y) {
         for (int32_t x = 0; x < width; ++x) {
-            const auto grad = data[y * width + x];
+            const auto p = y * width + x;
+            const auto grad = data[p];
             combine_grad[y * width + x] = 0.5 * grad.x + 0.5 * grad.y;
+            min = std::min(min, combine_grad[p]);
+            max = std::max(max, combine_grad[p]);
         }
     }
-    OutputDebugImg(width, height, 1, combine_grad.data(), name);
+    OutputDebugImg(width, height, 1, combine_grad.data(), min, max, name);
 }
 
 PatchMatchStereo::PatchMatchStereo()
@@ -62,11 +70,15 @@ PatchMatchStereo::~PatchMatchStereo() {
         OutputDebugImg(m_width, m_height, m_left_grad.data(), "left_gradient");
         OutputDebugImg(m_width, m_height, m_right_grad.data(),
                        "right_gradient");
-        OutputDebugImg(m_width, m_height, 1, m_left_cost.data(), "left_cost");
-        OutputDebugImg(m_width, m_height, 1, m_right_cost.data(), "right_cost");
+        OutputDebugImg(m_width, m_height, 1, m_left_cost.data(), 0, 255,
+                       "left_cost");
+        OutputDebugImg(m_width, m_height, 1, m_right_cost.data(), 0, 255,
+                       "right_cost");
         OutputDebugImg(m_width, m_height, 1, m_left_disparity.data(),
+                       m_option.min_disparity, m_option.max_disparity,
                        "left_disparity");
         OutputDebugImg(m_width, m_height, 1, m_right_disparity.data(),
+                       -m_option.max_disparity, -m_option.min_disparity,
                        "right_disparity");
         std::cout << "images writing took " << timer.GetElapsedMS() << " ms."
                   << std::endl;
@@ -135,7 +147,11 @@ bool PatchMatchStereo::Match(const uint8_t *left_img, const uint8_t *right_img,
         FillHole();
     }
 
-    OutputDisparity(left_disparity);
+    if (left_disparity) {
+        memcpy(left_disparity, m_left_disparity.data(),
+               m_width * m_height *
+                   sizeof(decltype(m_left_disparity)::value_type));
+    }
 
     return true;
 }
@@ -261,6 +277,13 @@ void PatchMatchStereo::Propagation() {
         std::cout << "propagation took " << timer.GetElapsedMS() << " ms."
                   << std::endl;
     }
+
+    ThreadPool pool(2);
+
+    pool.Queue(PatchMatchStereo::PlaneToDisparity, m_left_plane.data(),
+               m_left_disparity.data(), m_width, m_height);
+    pool.Queue(PatchMatchStereo::PlaneToDisparity, m_right_plane.data(),
+               m_right_disparity.data(), m_width, m_height);
 }
 
 void PatchMatchStereo::LRCheck() {
@@ -283,11 +306,11 @@ void PatchMatchStereo::LRCheck() {
                 }
 
                 // 根据视差值找到右影像上对应的同名像素
-                const auto col_right = lround(x - disp);
+                const auto x_right = lround(x - disp);
 
-                if (col_right >= 0 && col_right < m_width) {
+                if (x_right >= 0 && x_right < m_width) {
                     // 右影像上同名像素的视差值
-                    auto &disp_r = disp_right[y * m_width + col_right];
+                    auto &disp_r = disp_right[y * m_width + x_right];
 
                     // 判断两个视差值是否一致（差值在阈值内为一致）
                     // 在本代码里，左右视图的视差值符号相反
@@ -307,24 +330,23 @@ void PatchMatchStereo::LRCheck() {
 }
 
 void PatchMatchStereo::FillHole() {
-    const auto task = [this](DisparityPlane *plane, float *disparity,
+    const auto task = [this](float *disparity,
                              std::vector<Vector2i> &mismatches) {
         if (mismatches.empty()) {
             return;
         }
         // 存储每个待填充像素的视差
         std::vector<float> fill_disps(mismatches.size());
-        for (auto n = 0u; n < mismatches.size(); n++) {
-            auto &pix = mismatches[n];
-            const auto x = pix.x;
-            const auto y = pix.y;
-            std::vector<DisparityPlane> planes;
+        for (size_t n = 0; n < mismatches.size(); ++n) {
+            const auto x = mismatches[n].x;
+            const auto y = mismatches[n].y;
+            std::vector<Vector2i> candidates;
 
             // 向左向右各搜寻第一个有效像素，记录平面
             auto xs = x + 1;
             while (xs < m_width) {
                 if (disparity[y * m_width + xs] != INVALID_FLOAT) {
-                    planes.push_back(plane[y * m_width + xs]);
+                    candidates.emplace_back(xs, y);
                     break;
                 }
                 ++xs;
@@ -332,52 +354,36 @@ void PatchMatchStereo::FillHole() {
             xs = x - 1;
             while (xs >= 0) {
                 if (disparity[y * m_width + xs] != INVALID_FLOAT) {
-                    planes.push_back(plane[y * m_width + xs]);
+                    candidates.emplace_back(xs, y);
                     break;
                 }
                 --xs;
             }
 
-            if (planes.empty()) {
+            if (candidates.empty()) {
+                fill_disps[n] = disparity[y * m_width + x];
                 continue;
-            } else if (planes.size() == 1u) {
-                fill_disps[n] = planes[0].GetDisparity(x, y);
+            } else if (candidates.size() == 1) {
+                fill_disps[n] =
+                    disparity[m_width * candidates[0].y + candidates[0].x];
             } else {
                 // 选择较小的视差
-                const auto d1 = planes[0].GetDisparity(x, y);
-                const auto d2 = planes[1].GetDisparity(x, y);
-                fill_disps[n] = abs(d1) < abs(d2) ? d1 : d2;
+                auto dp1 =
+                    disparity[m_width * candidates[0].y + candidates[0].x];
+                auto dp2 =
+                    disparity[m_width * candidates[1].y + candidates[1].x];
+                fill_disps[n] = std::abs(dp1) < std::abs(dp2) ? dp1 : dp2;
             }
         }
-        for (auto n = 0u; n < mismatches.size(); n++) {
-            auto &pix = mismatches[n];
-            const int32_t x = pix.x;
-            const int32_t y = pix.y;
+        for (size_t n = 0; n < mismatches.size(); ++n) {
+            const int32_t x = mismatches[n].x;
+            const int32_t y = mismatches[n].y;
             disparity[y * m_width + x] = fill_disps[n];
         }
     };
     ThreadPool pool(2);
-    pool.Queue(task, m_left_plane.data(), m_left_disparity.data(),
-               m_left_mismatches);
-    pool.Queue(task, m_right_plane.data(), m_right_disparity.data(),
-               m_right_mismatches);
-}
-
-void PatchMatchStereo::OutputDisparity(float *disparity) {
-    {
-        ThreadPool pool(2);
-
-        pool.Queue(PatchMatchStereo::PlaneToDisparity, m_left_plane.data(),
-                   m_left_disparity.data(), m_width, m_height);
-        pool.Queue(PatchMatchStereo::PlaneToDisparity, m_right_plane.data(),
-                   m_right_disparity.data(), m_width, m_height);
-    }
-
-    if (disparity) {
-        memcpy(disparity, m_left_disparity.data(),
-               m_width * m_height *
-                   sizeof(decltype(m_left_disparity)::value_type));
-    }
+    pool.Queue(task, m_left_disparity.data(), m_left_mismatches);
+    pool.Queue(task, m_right_disparity.data(), m_right_mismatches);
 }
 
 void PatchMatchStereo::PlaneToDisparity(const DisparityPlane *plane,

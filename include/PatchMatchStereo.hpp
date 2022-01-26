@@ -9,6 +9,7 @@
 //  make an option for no glm dependency in the future
 #include <glm/glm.hpp>
 using Color = glm::i8vec3;
+using Vector2f = glm::vec2;
 using Vector3f = glm::vec3;
 using Vector2i = glm::i32vec2;
 
@@ -109,9 +110,8 @@ class PatchMatchStereo {
               is_debug(true) {}
     };
 
-    struct Gradient {
-        int16_t x, y;
-    };
+    using Gradient = Vector2i;
+
     PatchMatchStereo();
     ~PatchMatchStereo();
 
@@ -128,8 +128,6 @@ class PatchMatchStereo {
     void LRCheck();
 
     void FillHole();
-
-    void OutputDisparity(float* disparity);
 
     static void RandomInit(DisparityPlane* plane, float* disparity, int width,
                            int height, const Option& option, int8_t sign);
