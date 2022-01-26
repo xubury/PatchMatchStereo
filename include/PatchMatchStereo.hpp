@@ -134,7 +134,9 @@ class PatchMatchStereo {
                             float* disparity) const;
 
     static void RandomInit(DisparityPlane* plane, float* disparity, int width,
-                           int height, const Option& option, int8_t sign);
+                           int height, int32_t min_disparity,
+                           int32_t max_disparity, bool is_integer_disp,
+                           bool is_force_fpw);
 
     static void ComputeGray(const uint8_t* img, uint8_t* gray, int32_t width,
                             int32_t height);

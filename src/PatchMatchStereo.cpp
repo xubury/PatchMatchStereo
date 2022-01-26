@@ -157,24 +157,25 @@ bool PatchMatchStereo::Match(const uint8_t *left_img, const uint8_t *right_img,
 }
 
 void PatchMatchStereo::RandomInit(DisparityPlane *plane, float *disparity,
-                                  int width, int height, const Option &option,
-                                  int8_t sign) {
+                                  int width, int height, int32_t min_disparity,
+                                  int32_t max_disparity, bool is_integer_disp,
+                                  bool is_force_fpw) {
     using FloatRndFunc = float (*)(float, float);
-    auto rand_d = std::bind<FloatRndFunc>(Random::Uniform, option.min_disparity,
-                                          option.max_disparity);
+    auto rand_d =
+        std::bind<FloatRndFunc>(Random::Uniform, min_disparity, max_disparity);
     auto rand_n = std::bind<FloatRndFunc>(Random::Uniform, -1.f, 1.f);
 
     for (int32_t y = 0; y < height; ++y) {
         for (int32_t x = 0; x < width; ++x) {
             const int32_t p = y * width + x;
-            float disp = sign * rand_d();
-            if (option.is_integer_disp) {
+            float disp = rand_d();
+            if (is_integer_disp) {
                 disp = std::round(disp);
             }
             disparity[p] = disp;
 
             Vector3f norm;
-            if (!option.is_force_fpw) {
+            if (!is_force_fpw) {
                 norm.x = rand_n();
                 norm.y = rand_n();
                 float z = rand_n();
@@ -232,9 +233,13 @@ void PatchMatchStereo::PreCompute() {
     ThreadPool pool(std::thread::hardware_concurrency());
 
     pool.Queue(PatchMatchStereo::RandomInit, m_left_plane.data(),
-               m_left_disparity.data(), m_width, m_height, m_option, 1);
+               m_left_disparity.data(), m_width, m_height,
+               m_option.min_disparity, m_option.max_disparity,
+               m_option.is_integer_disp, m_option.is_force_fpw);
     pool.Queue(PatchMatchStereo::RandomInit, m_right_plane.data(),
-               m_right_disparity.data(), m_width, m_height, m_option, -1);
+               m_right_disparity.data(), m_width, m_height,
+               -m_option.max_disparity, m_option.min_disparity,
+               m_option.is_integer_disp, m_option.is_force_fpw);
 
     pool.Queue(PatchMatchStereo::ComputeGray, m_left_img, m_left_gray.data(),
                m_width, m_height);
@@ -423,7 +428,7 @@ void PatchMatchStereo::WeightMedianFilter(
                 if (yr < 0 || yr >= m_height || xc < 0 || xc >= m_width) {
                     continue;
                 }
-                const auto &disp = disparity[yr * m_width + xc];
+                const auto disp = disparity[yr * m_width + xc];
                 if (disp == INVALID_FLOAT) {
                     continue;
                 }
