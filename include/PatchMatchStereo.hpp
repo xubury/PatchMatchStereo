@@ -5,19 +5,7 @@
 #include <memory>
 #include <vector>
 
-// TODO: Put this to another separate module and
-//  make an option for no glm dependency in the future
-#include <glm/glm.hpp>
-using Color = glm::i8vec3;
-using Vector2f = glm::vec2;
-using Vector3f = glm::vec3;
-using Vector2i = glm::i32vec2;
-
-inline const auto& Dot =
-    static_cast<float (*)(const Vector3f&, const Vector3f&)>(glm::dot);
-inline const auto& Normalize =
-    static_cast<Vector3f (*)(const Vector3f&)>(glm::normalize);
-/////////////////////////////////////////////////////////////////////
+#include "Utils.hpp"
 
 struct DisparityPlane {
     Vector3f p;
