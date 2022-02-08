@@ -17,6 +17,7 @@ add_executable(PatchMatch
     src/main.cpp
     src/PatchMatchStereo.cpp
     src/PMSPropagation.cpp
+    src/SemiGlobalMatching.cpp
     src/Utils.cpp
     src/stb_image.cpp)
 
