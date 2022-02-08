@@ -2,6 +2,7 @@
 #define SEMI_GLOBAL_MATCHING_HPP
 
 #include <cstdint>
+#include <vector>
 
 class SemiGlobalMatching {
    public:
@@ -30,11 +31,20 @@ class SemiGlobalMatching {
     void CensusTransform();
     void ComputeCost();
     void CostAggregation();
-    void ComputeDispairty();
+    void ComputeDisparity();
     void LRCheck();
 
+    Option m_option;
     int32_t m_width;
     int32_t m_height;
+    const uint8_t* m_left_img;
+    const uint8_t* m_right_img;
+
+    std::vector<uint32_t> m_left_census;
+    std::vector<uint32_t> m_right_census;
+    std::vector<uint8_t> m_cost;
+    std::vector<uint8_t> m_cost_aggr;
+    std::vector<float> m_left_disparity;
     bool m_is_initialized;
 };
 
