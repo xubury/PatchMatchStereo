@@ -39,6 +39,14 @@ bool SemiGlobalMatching::Init(int32_t width, int32_t height,
 
     m_cost.resize(img_size * disp_range);
     m_cost_aggr.resize(img_size * disp_range);
+    m_cost_aggr_left.resize(img_size * disp_range);
+    m_cost_aggr_right.resize(img_size * disp_range);
+    m_cost_aggr_top.resize(img_size * disp_range);
+    m_cost_aggr_bottom.resize(img_size * disp_range);
+    m_cost_aggr_tl.resize(img_size * disp_range);
+    m_cost_aggr_br.resize(img_size * disp_range);
+    m_cost_aggr_tr.resize(img_size * disp_range);
+    m_cost_aggr_bl.resize(img_size * disp_range);
 
     m_left_disparity.resize(img_size);
 
@@ -139,12 +147,161 @@ void SemiGlobalMatching::ComputeCost() {
     }
 }
 
-void SemiGlobalMatching::CostAggregation() {}
+void SemiGlobalMatching::CostAggregation() {
+    {
+        ThreadPool pool(std::thread::hardware_concurrency());
+        pool.Queue(CostAggregationLeft, m_left_gray.data(), m_width, m_height,
+                   m_option.min_disparity, m_option.max_disparity, m_option.p1,
+                   m_option.p2, m_cost.data(), m_cost_aggr_left.data(), true);
+        pool.Queue(CostAggregationLeft, m_left_gray.data(), m_width, m_height,
+                   m_option.min_disparity, m_option.max_disparity, m_option.p1,
+                   m_option.p2, m_cost.data(), m_cost_aggr_right.data(), false);
+
+        pool.Queue(CostAggregationTop, m_left_gray.data(), m_width, m_height,
+                   m_option.min_disparity, m_option.max_disparity, m_option.p1,
+                   m_option.p2, m_cost.data(), m_cost_aggr_top.data(), true);
+        pool.Queue(CostAggregationTop, m_left_gray.data(), m_width, m_height,
+                   m_option.min_disparity, m_option.max_disparity, m_option.p1,
+                   m_option.p2, m_cost.data(), m_cost_aggr_bottom.data(),
+                   false);
+    }
+    const size_t size =
+        m_width * m_height * (m_option.max_disparity - m_option.min_disparity);
+    for (size_t i = 0; i < size; ++i) {
+        m_cost_aggr[i] = m_cost_aggr_left[i] + m_cost_aggr_right[i] +
+                         m_cost_aggr_top[i] + m_cost_aggr_bottom[i];
+    }
+}
+
+void SemiGlobalMatching::CostAggregationLeft(
+    const uint8_t *img, int32_t width, int32_t height, int32_t min_disparity,
+    int32_t max_disparity, uint32_t p1, uint32_t p2, const uint8_t *cost,
+    uint8_t *cost_aggr, bool is_forward) {
+    const int32_t disp_range = max_disparity - min_disparity;
+    const int32_t direction = is_forward ? 1 : -1;
+    for (int32_t y = 0; y < height; ++y) {
+        auto cost_row = is_forward
+                            ? cost + y * width * disp_range
+                            : cost + (y * width + width - 1) * disp_range;
+        auto cost_aggr_row =
+            is_forward ? cost_aggr + y * width * disp_range
+                       : cost_aggr + (y * width + width - 1) * disp_range;
+
+        auto img_row =
+            is_forward ? img + y * width : img + y * width + width - 1;
+
+        uint8_t gray = *img_row;
+        uint8_t gray_last = *img_row;
+
+        std::vector<uint8_t> cost_last_path(disp_range + 2, UINT8_MAX);
+
+        memcpy(cost_aggr_row, cost_row, disp_range * sizeof(uint8_t));
+        memcpy(&cost_last_path[1], cost_aggr_row, disp_range * sizeof(uint8_t));
+        cost_row += direction * disp_range;
+        cost_aggr_row += direction * disp_range;
+        img_row += direction;
+
+        uint8_t min_cost_last_path = UINT8_MAX;
+        for (auto cost : cost_last_path) {
+            min_cost_last_path = std::min(cost, min_cost_last_path);
+        }
+
+        for (int32_t x = 0; x < width - 1; ++x) {
+            gray = *img_row;
+            uint8_t min_cost = UINT8_MAX;
+            for (int32_t d = 0; d < disp_range; ++d) {
+                const uint8_t cost = cost_row[d];
+                const uint32_t l1 = cost_last_path[d + 1];
+                const uint32_t l2 = cost_last_path[d] + p1;
+                const uint32_t l3 = cost_last_path[d + 2] + p1;
+                const uint32_t l4 =
+                    min_cost_last_path +
+                    std::max(p1, p2 / (abs(gray - gray_last) + 1));
+                const uint8_t cost_s =
+                    cost + std::min(std::min(l1, l2), std::min(l3, l4)) -
+                    min_cost_last_path;
+                cost_aggr_row[d] = cost_s;
+                min_cost = std::min(min_cost, cost_s);
+            }
+
+            min_cost_last_path = min_cost;
+            memcpy(&cost_last_path[1], cost_aggr_row,
+                   disp_range * sizeof(uint8_t));
+            cost_row += direction * disp_range;
+            cost_aggr_row += direction * disp_range;
+            img_row += direction;
+
+            gray_last = gray;
+        }
+    }
+}
+
+void SemiGlobalMatching::CostAggregationTop(
+    const uint8_t *img, int32_t width, int32_t height, int32_t min_disparity,
+    int32_t max_disparity, int32_t p1, int32_t p2, const uint8_t *cost,
+    uint8_t *cost_aggr, bool is_forward) {
+    const int32_t disp_range = max_disparity - min_disparity;
+    const int32_t direction = is_forward ? 1 : -1;
+    for (int32_t x = 0; x < width; ++x) {
+        auto cost_col = is_forward
+                            ? cost + x * disp_range
+                            : cost + ((height - 1) * width + x) * disp_range;
+        auto cost_aggr_col =
+            is_forward ? cost_aggr + x * disp_range
+                       : cost_aggr + ((height - 1) * width + x) * disp_range;
+
+        auto img_col = is_forward ? img + x : img + x + (height - 1) * width;
+
+        uint8_t gray = *img_col;
+        uint8_t gray_last = *img_col;
+
+        std::vector<uint8_t> cost_last_path(disp_range + 2, UINT8_MAX);
+
+        memcpy(cost_aggr_col, cost_col, disp_range * sizeof(uint8_t));
+        memcpy(&cost_last_path[1], cost_aggr_col, disp_range * sizeof(uint8_t));
+        cost_col += direction * width * disp_range;
+        cost_aggr_col += direction * width * disp_range;
+        img_col += direction * width;
+
+        uint8_t min_cost_last_path = UINT8_MAX;
+        for (auto cost : cost_last_path) {
+            min_cost_last_path = std::min(cost, min_cost_last_path);
+        }
+
+        for (int32_t y = 0; y < height - 1; ++y) {
+            gray = *img_col;
+            uint8_t min_cost = UINT8_MAX;
+            for (int32_t d = 0; d < disp_range; ++d) {
+                const uint8_t cost = cost_col[d];
+                const uint32_t l1 = cost_last_path[d + 1];
+                const uint32_t l2 = cost_last_path[d] + p1;
+                const uint32_t l3 = cost_last_path[d + 2] + p1;
+                const uint32_t l4 =
+                    min_cost_last_path +
+                    std::max(p1, p2 / (abs(gray - gray_last) + 1));
+                const uint8_t cost_s =
+                    cost + std::min(std::min(l1, l2), std::min(l3, l4)) -
+                    min_cost_last_path;
+                cost_aggr_col[d] = cost_s;
+                min_cost = std::min(min_cost, cost_s);
+            }
+
+            min_cost_last_path = min_cost;
+            memcpy(&cost_last_path[1], cost_aggr_col,
+                   disp_range * sizeof(uint8_t));
+            cost_col += direction * width * disp_range;
+            cost_aggr_col += direction * width * disp_range;
+            img_col += direction * width;
+
+            gray_last = gray;
+        }
+    }
+}
 
 void SemiGlobalMatching::ComputeDisparity() {
     const int32_t disp_range = m_option.max_disparity - m_option.min_disparity;
     // 未实现聚合步骤，暂用初始代价值来代替
-    auto cost_ptr = m_cost.data();
+    auto cost_ptr = m_cost_aggr.data();
 
     // 逐像素计算最优视差
     for (int32_t y = 0; y < m_height; ++y) {

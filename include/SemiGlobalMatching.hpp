@@ -37,6 +37,27 @@ class SemiGlobalMatching {
     void ComputeDisparity();
     void LRCheck();
 
+    static void CostAggregationLeft(const uint8_t* img, int32_t width,
+                                    int32_t height, int32_t min_disparity,
+                                    int32_t max_disparity, uint32_t p1,
+                                    uint32_t p2, const uint8_t* cost,
+                                    uint8_t* cost_aggr, bool is_forward);
+    static void CostAggregationTop(const uint8_t* img, int32_t width,
+                                   int32_t height, int32_t min_disparity,
+                                   int32_t max_disparity, int32_t p1,
+                                   int32_t p2, const uint8_t* cost,
+                                   uint8_t* cost_aggr, bool is_forward);
+    static void CostAggregationTopLeft(const uint8_t* img, int32_t width,
+                                       int32_t height, int32_t min_disparity,
+                                       int32_t max_disparity, int32_t p1,
+                                       int32_t p2, const uint8_t* cost,
+                                       uint8_t* cost_aggr, bool is_forward);
+    static void CostAggregationTopRight(const uint8_t* img, int32_t width,
+                                        int32_t height, int32_t min_disparity,
+                                        int32_t max_disparity, int32_t p1,
+                                        int32_t p2, const uint8_t* cost,
+                                        uint8_t* cost_aggr, bool is_forward);
+
     Option m_option;
 
     int32_t m_width;
@@ -55,6 +76,14 @@ class SemiGlobalMatching {
 
     std::vector<uint8_t> m_cost;
     std::vector<uint8_t> m_cost_aggr;
+    std::vector<uint8_t> m_cost_aggr_left;
+    std::vector<uint8_t> m_cost_aggr_right;
+    std::vector<uint8_t> m_cost_aggr_top;
+    std::vector<uint8_t> m_cost_aggr_bottom;
+    std::vector<uint8_t> m_cost_aggr_tl;
+    std::vector<uint8_t> m_cost_aggr_br;
+    std::vector<uint8_t> m_cost_aggr_tr;
+    std::vector<uint8_t> m_cost_aggr_bl;
 
     std::vector<float> m_left_disparity;
 };
