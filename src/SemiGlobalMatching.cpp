@@ -9,7 +9,11 @@ SemiGlobalMatching::SemiGlobalMatching()
 
 SemiGlobalMatching::~SemiGlobalMatching() {
     OutputDebugImg(m_width, m_height, 1, m_left_disparity.data(),
-                   m_option.min_disparity, m_option.max_disparity, "sgm_disp");
+                   m_option.min_disparity, m_option.max_disparity,
+                   "sgm_left_disp");
+    OutputDebugImg(m_width, m_height, 1, m_right_disparity.data(),
+                   m_option.min_disparity, m_option.max_disparity,
+                   "sgm_right_disp");
 }
 
 bool SemiGlobalMatching::Init(int32_t width, int32_t height,
@@ -49,6 +53,7 @@ bool SemiGlobalMatching::Init(int32_t width, int32_t height,
     m_cost_aggr_bl.resize(img_size * disp_range);
 
     m_left_disparity.resize(img_size);
+    m_right_disparity.resize(img_size);
 
     m_is_initialized = true;
     return true;
@@ -69,10 +74,28 @@ bool SemiGlobalMatching::Match(const uint8_t *left_img,
     ComputeGray(m_left_img, m_left_gray.data(), m_width, m_height);
     ComputeGray(m_right_img, m_right_gray.data(), m_width, m_height);
     CensusTransform();
-    ComputeCost();
-    CostAggregation();
-    ComputeDisparity();
-    LRCheck();
+
+    ComputeCost(m_cost.data(), m_left_census.data(), m_right_census.data(),
+                m_width, m_height, m_option.min_disparity,
+                m_option.max_disparity);
+    CostAggregation(m_left_gray.data(), m_cost.data());
+    ComputeDisparity(m_left_disparity.data());
+
+    ComputeCost(m_cost.data(), m_right_census.data(), m_left_census.data(),
+                m_width, m_height, -m_option.max_disparity,
+                -m_option.min_disparity);
+    CostAggregation(m_right_gray.data(), m_cost.data());
+    ComputeDisparity(m_right_disparity.data());
+
+    if (m_option.is_check_lr) {
+        LRCheck();
+        std::cout << "left mismatches: " << m_left_mismatches.size()
+                  << " right mismatches: " << m_right_mismatches.size()
+                  << std::endl;
+    }
+    if (m_option.is_fill_hole) {
+        FillHole();
+    }
 
     if (left_disparity) {
         memcpy(left_disparity, m_left_disparity.data(),
@@ -119,51 +142,57 @@ void SemiGlobalMatching::CensusTransform5x5(const uint8_t *src,
     }
 }
 
-void SemiGlobalMatching::ComputeCost() {
-    const int32_t disp_range = m_option.max_disparity - m_option.min_disparity;
-    for (int32_t y = 0; y < m_height; ++y) {
-        for (int32_t x = 0; x < m_width; ++x) {
+void SemiGlobalMatching::ComputeCost(uint8_t *cost_ptr,
+                                     const uint32_t *left_census,
+                                     const uint32_t *right_census,
+                                     int32_t width, int32_t height,
+                                     int32_t min_disparity,
+                                     int32_t max_disparity) {
+    const int32_t disp_range = max_disparity - min_disparity;
+    for (int32_t y = 0; y < height; ++y) {
+        for (int32_t x = 0; x < width; ++x) {
             // 左影像census值
-            const int32_t census_val_l = m_left_census[y * m_width + x];
+            {
+                const int32_t census_val_l = left_census[y * width + x];
 
-            // 逐视差计算代价值
-            for (int32_t d = m_option.min_disparity; d < m_option.max_disparity;
-                 d++) {
-                const uint32_t d_idx = d - m_option.min_disparity;
-                auto &cost =
-                    m_cost[y * m_width * disp_range + x * disp_range + d_idx];
-                if (x - d < 0 || x - d >= m_width) {
-                    cost = UINT8_MAX / 2;
-                    continue;
+                // 逐视差计算代价值
+                for (int32_t d = min_disparity; d < max_disparity; d++) {
+                    const uint32_t d_idx = d - min_disparity;
+                    auto &cost = cost_ptr[y * width * disp_range +
+                                          x * disp_range + d_idx];
+                    if (x - d < 0 || x - d >= width) {
+                        cost = UINT8_MAX / 2;
+                        continue;
+                    }
+                    // 右影像对应像点的census值
+                    const int32_t census_val_r =
+                        right_census[y * width + x - d];
+
+                    // 计算匹配代价
+                    cost = Hamming(census_val_l, census_val_r);
                 }
-                // 右影像对应像点的census值
-                const int32_t census_val_r =
-                    m_right_census[y * m_width + x - d];
-
-                // 计算匹配代价
-                cost = Hamming(census_val_l, census_val_r);
             }
         }
     }
 }
 
-void SemiGlobalMatching::CostAggregation() {
+void SemiGlobalMatching::CostAggregation(const uint8_t *img,
+                                         const uint8_t *cost) {
     {
         ThreadPool pool(std::thread::hardware_concurrency());
-        pool.Queue(CostAggregationLeft, m_left_gray.data(), m_width, m_height,
+        pool.Queue(CostAggregationLeft, img, m_width, m_height,
                    m_option.min_disparity, m_option.max_disparity, m_option.p1,
-                   m_option.p2, m_cost.data(), m_cost_aggr_left.data(), true);
-        pool.Queue(CostAggregationLeft, m_left_gray.data(), m_width, m_height,
+                   m_option.p2, cost, m_cost_aggr_left.data(), true);
+        pool.Queue(CostAggregationLeft, img, m_width, m_height,
                    m_option.min_disparity, m_option.max_disparity, m_option.p1,
-                   m_option.p2, m_cost.data(), m_cost_aggr_right.data(), false);
+                   m_option.p2, cost, m_cost_aggr_right.data(), false);
 
-        pool.Queue(CostAggregationTop, m_left_gray.data(), m_width, m_height,
+        pool.Queue(CostAggregationTop, img, m_width, m_height,
                    m_option.min_disparity, m_option.max_disparity, m_option.p1,
-                   m_option.p2, m_cost.data(), m_cost_aggr_top.data(), true);
-        pool.Queue(CostAggregationTop, m_left_gray.data(), m_width, m_height,
+                   m_option.p2, cost, m_cost_aggr_top.data(), true);
+        pool.Queue(CostAggregationTop, img, m_width, m_height,
                    m_option.min_disparity, m_option.max_disparity, m_option.p1,
-                   m_option.p2, m_cost.data(), m_cost_aggr_bottom.data(),
-                   false);
+                   m_option.p2, cost, m_cost_aggr_bottom.data(), false);
     }
     const size_t size =
         m_width * m_height * (m_option.max_disparity - m_option.min_disparity);
@@ -195,8 +224,10 @@ void SemiGlobalMatching::CostAggregationLeft(
 
         std::vector<uint8_t> cost_last_path(disp_range + 2, UINT8_MAX);
 
-        memcpy(cost_aggr_row, cost_row, disp_range * sizeof(uint8_t));
-        memcpy(&cost_last_path[1], cost_aggr_row, disp_range * sizeof(uint8_t));
+        memcpy(cost_aggr_row, cost_row,
+               static_cast<uint32_t>(disp_range * sizeof(uint8_t)));
+        memcpy(&cost_last_path[1], cost_aggr_row,
+               static_cast<uint16_t>(disp_range * sizeof(uint8_t)));
         cost_row += direction * disp_range;
         cost_aggr_row += direction * disp_range;
         img_row += direction;
@@ -257,8 +288,10 @@ void SemiGlobalMatching::CostAggregationTop(
 
         std::vector<uint8_t> cost_last_path(disp_range + 2, UINT8_MAX);
 
-        memcpy(cost_aggr_col, cost_col, disp_range * sizeof(uint8_t));
-        memcpy(&cost_last_path[1], cost_aggr_col, disp_range * sizeof(uint8_t));
+        memcpy(cost_aggr_col, cost_col,
+               static_cast<uint32_t>(disp_range * sizeof(uint8_t)));
+        memcpy(&cost_last_path[1], cost_aggr_col,
+               static_cast<uint16_t>(disp_range * sizeof(uint8_t)));
         cost_col += direction * width * disp_range;
         cost_aggr_col += direction * width * disp_range;
         img_col += direction * width;
@@ -298,7 +331,7 @@ void SemiGlobalMatching::CostAggregationTop(
     }
 }
 
-void SemiGlobalMatching::ComputeDisparity() {
+void SemiGlobalMatching::ComputeDisparity(float *disparity) {
     const int32_t disp_range = m_option.max_disparity - m_option.min_disparity;
     // 未实现聚合步骤，暂用初始代价值来代替
     auto cost_ptr = m_cost_aggr.data();
@@ -325,13 +358,120 @@ void SemiGlobalMatching::ComputeDisparity() {
 
             // 最小代价值对应的视差值即为像素的最优视差
             if (max_cost != min_cost) {
-                m_left_disparity[y * m_width + x] = best_disparity;
+                disparity[y * m_width + x] = best_disparity;
             } else {
                 // 如果所有视差下的代价值都一样，则该像素无效
-                m_left_disparity[y * m_width + x] = INVALID_FLOAT;
+                disparity[y * m_width + x] = INVALID_FLOAT;
             }
         }
     }
 }
 
-void SemiGlobalMatching::LRCheck() {}
+void SemiGlobalMatching::LRCheck() {
+    for (int k = 0; k < 2; ++k) {
+        auto *disp_left =
+            k == 0 ? m_left_disparity.data() : m_right_disparity.data();
+        auto *disp_right =
+            k == 0 ? m_right_disparity.data() : m_left_disparity.data();
+        auto &mismatches = k == 0 ? m_left_mismatches : m_right_mismatches;
+
+        mismatches.clear();
+        for (int32_t y = 0; y < m_height; ++y) {
+            for (int32_t x = 0; x < m_width; ++x) {
+                // 左影像视差值
+                auto &disp = disp_left[y * m_width + x];
+
+                if (disp == INVALID_FLOAT) {
+                    mismatches.emplace_back(x, y);
+                    continue;
+                }
+
+                // 根据视差值找到右影像上对应的同名像素
+                const auto x_right = lround(x - disp);
+
+                if (x_right >= 0 && x_right < m_width) {
+                    // 右影像上同名像素的视差值
+                    auto &disp_r = disp_right[y * m_width + x_right];
+
+                    // 判断两个视差值是否一致（差值在阈值内为一致）
+                    // 在本代码里，左右视图的视差值符号相反
+                    if (std::abs(disp + disp_r) > m_option.lrcheck_thresh) {
+                        // 让视差值无效
+                        disp = INVALID_FLOAT;
+                        mismatches.emplace_back(x, y);
+                    }
+                } else {
+                    // 通过视差值在右影像上找不到同名像素（超出影像范围）
+                    disp = INVALID_FLOAT;
+                    mismatches.emplace_back(x, y);
+                }
+            }
+        }
+    }
+}
+
+void SemiGlobalMatching::FillHole() {
+    const auto task = [this](float *disparity,
+                             std::vector<Vector2i> &mismatches) {
+        if (mismatches.empty()) {
+            return;
+        }
+        // 存储每个待填充像素的视差
+        std::vector<float> fill_disps(mismatches.size());
+        for (size_t n = 0; n < mismatches.size(); ++n) {
+            const auto x = mismatches[n].x;
+            const auto y = mismatches[n].y;
+            std::vector<Vector2i> candidates;
+
+            // 向左向右各搜寻第一个有效像素，记录平面
+            auto xs = x + 1;
+            while (xs < m_width) {
+                if (disparity[y * m_width + xs] != INVALID_FLOAT) {
+                    candidates.emplace_back(xs, y);
+                    break;
+                }
+                ++xs;
+            }
+            xs = x - 1;
+            while (xs >= 0) {
+                if (disparity[y * m_width + xs] != INVALID_FLOAT) {
+                    candidates.emplace_back(xs, y);
+                    break;
+                }
+                --xs;
+            }
+
+            if (candidates.empty()) {
+                fill_disps[n] = disparity[y * m_width + x];
+                continue;
+            } else if (candidates.size() == 1) {
+                fill_disps[n] =
+                    disparity[m_width * candidates[0].y + candidates[0].x];
+            } else {
+                // 选择较小的视差
+                auto dp1 =
+                    disparity[m_width * candidates[0].y + candidates[0].x];
+                auto dp2 =
+                    disparity[m_width * candidates[1].y + candidates[1].x];
+                fill_disps[n] = std::abs(dp1) < std::abs(dp2) ? dp1 : dp2;
+            }
+        }
+        for (size_t n = 0; n < mismatches.size(); ++n) {
+            const int32_t x = mismatches[n].x;
+            const int32_t y = mismatches[n].y;
+            disparity[y * m_width + x] = fill_disps[n];
+        }
+    };
+    ThreadPool pool(std::thread::hardware_concurrency());
+    auto left_ret =
+        pool.Queue(task, m_left_disparity.data(), m_left_mismatches);
+    auto right_ret =
+        pool.Queue(task, m_right_disparity.data(), m_right_mismatches);
+
+    // left_ret.get();
+    // pool.Queue(&PatchMatchStereo::WeightMedianFilter, this, m_left_img,
+    //            m_left_mismatches, m_left_disparity.data());
+    // right_ret.get();
+    // pool.Queue(&PatchMatchStereo::WeightMedianFilter, this, m_right_img,
+    //            m_right_mismatches, m_right_disparity.data());
+}

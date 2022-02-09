@@ -31,21 +31,26 @@ PatchMatchStereo::~PatchMatchStereo() {
         std::cout << "writing debug images..." << std::endl;
         timer.Restart();
 
-        OutputDebugImg(m_width, m_height, 1, m_left_gray.data(), "left_gray");
-        OutputDebugImg(m_width, m_height, 1, m_right_gray.data(), "right_gray");
-        OutputDebugImg(m_width, m_height, m_left_grad.data(), "left_gradient");
-        OutputDebugImg(m_width, m_height, m_right_grad.data(),
-                       "right_gradient");
-        OutputDebugImg(m_width, m_height, 1, m_left_cost.data(), 0, 255,
-                       "left_cost");
-        OutputDebugImg(m_width, m_height, 1, m_right_cost.data(), 0, 255,
-                       "right_cost");
+        if (m_option.debug_level > 1) {
+            OutputDebugImg(m_width, m_height, 1, m_left_gray.data(),
+                           "left_gray");
+            OutputDebugImg(m_width, m_height, 1, m_right_gray.data(),
+                           "right_gray");
+            OutputDebugImg(m_width, m_height, m_left_grad.data(),
+                           "left_gradient");
+            OutputDebugImg(m_width, m_height, m_right_grad.data(),
+                           "right_gradient");
+            OutputDebugImg(m_width, m_height, 1, m_left_cost.data(), 0, 255,
+                           "left_cost");
+            OutputDebugImg(m_width, m_height, 1, m_right_cost.data(), 0, 255,
+                           "right_cost");
+        }
         OutputDebugImg(m_width, m_height, 1, m_left_disparity.data(),
                        m_option.min_disparity, m_option.max_disparity,
-                       "left_disparity");
+                       "pms_left_disp");
         OutputDebugImg(m_width, m_height, 1, m_right_disparity.data(),
                        -m_option.max_disparity, -m_option.min_disparity,
-                       "right_disparity");
+                       "pms_right_disp");
         std::cout << "images writing took " << timer.GetElapsedMS() << " ms."
                   << std::endl;
     }

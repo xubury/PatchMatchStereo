@@ -1,6 +1,8 @@
 #ifndef SEMI_GLOBAL_MATCHING_HPP
 #define SEMI_GLOBAL_MATCHING_HPP
 
+#include "Utils.hpp"
+
 #include <cstdint>
 #include <vector>
 
@@ -14,12 +16,18 @@ class SemiGlobalMatching {
         int32_t p1;
         int32_t p2;
 
+        float lrcheck_thresh;
+        bool is_check_lr;
+        bool is_fill_hole;
         Option()
             : num_paths(8),
               min_disparity(0),
               max_disparity(64),
               p1(10),
-              p2(150) {}
+              p2(150),
+              lrcheck_thresh(1),
+              is_check_lr(true),
+              is_fill_hole(true) {}
     };
     SemiGlobalMatching();
     ~SemiGlobalMatching();
@@ -32,10 +40,14 @@ class SemiGlobalMatching {
 
    private:
     void CensusTransform();
-    void ComputeCost();
-    void CostAggregation();
-    void ComputeDisparity();
+    static void ComputeCost(uint8_t* cost_ptr, const uint32_t* left_census,
+                            const uint32_t* right_census, int32_t width,
+                            int32_t height, int32_t min_disparity,
+                            int32_t max_disparity);
+    void CostAggregation(const uint8_t* img, const uint8_t* cost);
+    void ComputeDisparity(float* disparity);
     void LRCheck();
+    void FillHole();
 
     static void CostAggregationLeft(const uint8_t* img, int32_t width,
                                     int32_t height, int32_t min_disparity,
@@ -86,6 +98,10 @@ class SemiGlobalMatching {
     std::vector<uint8_t> m_cost_aggr_bl;
 
     std::vector<float> m_left_disparity;
+    std::vector<float> m_right_disparity;
+
+    std::vector<Vector2i> m_left_mismatches;
+    std::vector<Vector2i> m_right_mismatches;
 };
 
 #endif

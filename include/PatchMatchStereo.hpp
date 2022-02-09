@@ -81,6 +81,7 @@ class PatchMatchStereo {
         bool is_integer_disp;
 
         bool is_debug;
+        int8_t debug_level;
         Option()
             : patch_size(35),
               min_disparity(0),
@@ -95,7 +96,8 @@ class PatchMatchStereo {
               is_fill_hole(true),
               is_force_fpw(false),
               is_integer_disp(false),
-              is_debug(true) {}
+              is_debug(true),
+              debug_level(1) {}
     };
 
     using Gradient = Vector2i;
