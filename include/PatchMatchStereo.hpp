@@ -126,8 +126,6 @@ class PatchMatchStereo {
                            int32_t max_disparity, bool is_integer_disp,
                            bool is_force_fpw);
 
-    static void ComputeGray(const uint8_t* img, uint8_t* gray, int32_t width,
-                            int32_t height);
     static void ComputeGradient(const uint8_t* gray, Gradient* grad,
                                 int32_t width, int32_t height);
 

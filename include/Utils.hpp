@@ -4,6 +4,7 @@
 #include <chrono>
 #include <functional>
 #include <future>
+#include <filesystem>
 #include <queue>
 
 // TODO: Put this to another separate module and
@@ -19,7 +20,9 @@ inline const auto& Dot =
 inline const auto& Normalize =
     static_cast<Vector3f (*)(const Vector3f&)>(glm::normalize);
 /////////////////////////////////////////////////////////////////////
-//
+
+#include "stb_image_write.h"
+
 using ClockType = std::chrono::high_resolution_clock;
 
 class Timer {
@@ -97,6 +100,60 @@ decltype(auto) ThreadPool::Queue(F&& f, ARGS&&... args) {
     }
     m_condition.notify_one();
     return res;
+}
+
+constexpr auto INVALID_FLOAT = std::numeric_limits<float>::infinity();
+
+template <typename T>
+inline uint8_t Hamming(const T x, const T y) {
+    T dist = 0;
+    T val = x ^ y;
+    while (val) {
+        ++dist;
+        val &= val - 1;
+    }
+    return dist;
+}
+
+const std::filesystem::path DEBUG_PATH = "img/debug";
+
+inline void OutputDebugImg(int32_t width, int32_t height, int32_t channels,
+                           uint8_t* data, const std::string& name) {
+    if (!std::filesystem::exists(DEBUG_PATH)) {
+        std::filesystem::create_directories(DEBUG_PATH);
+    }
+    std::filesystem::path path = DEBUG_PATH / name;
+    if (!path.has_extension()) {
+        path += ".png";
+    } else if (path.extension() != ".png") {
+        path.replace_extension(".png");
+    }
+    stbi_write_png(path.generic_string().c_str(), width, height, channels, data,
+                   0);
+}
+
+inline void OutputDebugImg(int32_t width, int32_t height, int32_t channels,
+                           float* data, float min, float max,
+                           const std::string& name) {
+    std::vector<uint8_t> integer_img(width * height * channels);
+    for (size_t i = 0; i < integer_img.size(); ++i) {
+        integer_img[i] = std::round(
+            data[i] / (max - min) *
+            std::numeric_limits<decltype(integer_img)::value_type>::max());
+    }
+    OutputDebugImg(width, height, channels, integer_img.data(), name);
+}
+
+inline void ComputeGray(const uint8_t* img, uint8_t* gray, int32_t width,
+                        int32_t height) {
+    for (int32_t y = 0; y < height; ++y) {
+        for (int32_t x = 0; x < width; ++x) {
+            const auto b = img[y * width * 3 + 3 * x];
+            const auto g = img[y * width * 3 + 3 * x + 1];
+            const auto r = img[y * width * 3 + 3 * x + 2];
+            gray[y * width + x] = r * 0.299 + g * 0.587 + b * 0.114;
+        }
+    }
 }
 
 #endif

@@ -27,6 +27,9 @@ class SemiGlobalMatching {
     bool Match(const uint8_t* left_img, const uint8_t* right_img,
                float* left_disparity);
 
+    static void CensusTransform5x5(const uint8_t* src, uint32_t* census,
+                                   int32_t width, int32_t height);
+
    private:
     void CensusTransform();
     void ComputeCost();
@@ -35,17 +38,25 @@ class SemiGlobalMatching {
     void LRCheck();
 
     Option m_option;
+
     int32_t m_width;
     int32_t m_height;
+
+    bool m_is_initialized;
+
     const uint8_t* m_left_img;
     const uint8_t* m_right_img;
 
+    std::vector<uint8_t> m_left_gray;
+    std::vector<uint8_t> m_right_gray;
+
     std::vector<uint32_t> m_left_census;
     std::vector<uint32_t> m_right_census;
+
     std::vector<uint8_t> m_cost;
     std::vector<uint8_t> m_cost_aggr;
+
     std::vector<float> m_left_disparity;
-    bool m_is_initialized;
 };
 
 #endif

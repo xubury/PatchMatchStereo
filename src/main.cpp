@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "PatchMatchStereo.hpp"
+#include "SemiGlobalMatching.hpp"
 #include "Utils.hpp"
 #include "stb_image.h"
 
@@ -26,16 +27,30 @@ int main(int argc, char *args[]) {
     std::cout << "img size width: " << width << " height: " << height
               << std::endl;
 
-    std::vector<float> disparity_map(width * height);
-    PatchMatchStereo stereo;
-    PatchMatchStereo::Option option;
-    option.num_iters = 3;
+    std::vector<float> pms_disp(width * height);
+    {
+        // std::cout << "starting PMS..." << std::endl;
+        // timer.Restart();
+        // PatchMatchStereo pms;
+        // PatchMatchStereo::Option option;
+        // option.num_iters = 3;
+        // pms.Init(width, height, option);
+        // pms.Match(left_img, right_img, pms_disp.data());
+        // std::cout << "PMS took " << timer.GetElapsedMS() << " ms. "
+        //           << std::endl;
+    }
 
-    std::cout << "starting PMS..." << std::endl;
-    timer.Restart();
-    stereo.Init(width, height, option);
-    stereo.Match(left_img, right_img, disparity_map.data());
-    std::cout << "PMS took " << timer.GetElapsedMS() << " ms. " << std::endl;
+    std::vector<float> sgm_disp(width * height);
+    {
+        std::cout << "starting SGM..." << std::endl;
+        timer.Restart();
+        SemiGlobalMatching sgm;
+        SemiGlobalMatching::Option option;
+        sgm.Init(width, height, option);
+        sgm.Match(left_img, right_img, sgm_disp.data());
+        std::cout << "SGM took " << timer.GetElapsedMS() << " ms. "
+                  << std::endl;
+    }
 
     stbi_image_free(left_img);
     stbi_image_free(right_img);

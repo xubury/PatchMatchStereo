@@ -1,40 +1,8 @@
 #include <cstring>
 #include <iostream>
-#include <random>
-#include <filesystem>
 
 #include "PMSPropagation.hpp"
 #include "Utils.hpp"
-
-#include "stb_image_write.h"
-
-const std::filesystem::path DEBUG_PATH = "img/debug";
-
-constexpr auto INVALID_FLOAT = std::numeric_limits<float>::infinity();
-
-static void OutputDebugImg(int32_t width, int32_t height, int32_t channels,
-                           uint8_t *data, const std::string &name) {
-    std::filesystem::path path = DEBUG_PATH / name;
-    if (!path.has_extension()) {
-        path += ".png";
-    } else if (path.extension() != ".png") {
-        path.replace_extension(".png");
-    }
-    stbi_write_png(path.generic_string().c_str(), width, height, channels, data,
-                   0);
-}
-
-static void OutputDebugImg(int32_t width, int32_t height, int32_t channels,
-                           float *data, float min, float max,
-                           const std::string &name) {
-    std::vector<uint8_t> integer_img(width * height * channels);
-    for (size_t i = 0; i < integer_img.size(); ++i) {
-        integer_img[i] = std::round(
-            data[i] / (max - min) *
-            std::numeric_limits<decltype(integer_img)::value_type>::max());
-    }
-    OutputDebugImg(width, height, channels, integer_img.data(), name);
-}
 
 static void OutputDebugImg(int32_t width, int32_t height,
                            PatchMatchStereo::Gradient *data,
@@ -62,9 +30,7 @@ PatchMatchStereo::~PatchMatchStereo() {
     if (m_option.is_debug) {
         std::cout << "writing debug images..." << std::endl;
         timer.Restart();
-        if (!std::filesystem::exists(DEBUG_PATH)) {
-            std::filesystem::create_directories(DEBUG_PATH);
-        }
+
         OutputDebugImg(m_width, m_height, 1, m_left_gray.data(), "left_gray");
         OutputDebugImg(m_width, m_height, 1, m_right_gray.data(), "right_gray");
         OutputDebugImg(m_width, m_height, m_left_grad.data(), "left_gradient");
@@ -192,18 +158,6 @@ void PatchMatchStereo::RandomInit(DisparityPlane *plane, float *disparity,
     }
 }
 
-void PatchMatchStereo::ComputeGray(const uint8_t *img, uint8_t *gray,
-                                   int32_t width, int32_t height) {
-    for (int32_t y = 0; y < height; ++y) {
-        for (int32_t x = 0; x < width; ++x) {
-            const auto b = img[y * width * 3 + 3 * x];
-            const auto g = img[y * width * 3 + 3 * x + 1];
-            const auto r = img[y * width * 3 + 3 * x + 2];
-            gray[y * width + x] = r * 0.299 + g * 0.587 + b * 0.114;
-        }
-    }
-}
-
 void PatchMatchStereo::ComputeGradient(const uint8_t *gray, Gradient *grad,
                                        int32_t width, int32_t height) {
     // Sobel梯度算子
@@ -241,10 +195,9 @@ void PatchMatchStereo::PreCompute() {
                -m_option.max_disparity, m_option.min_disparity,
                m_option.is_integer_disp, m_option.is_force_fpw);
 
-    pool.Queue(PatchMatchStereo::ComputeGray, m_left_img, m_left_gray.data(),
-               m_width, m_height);
-    pool.Queue(PatchMatchStereo::ComputeGray, m_right_img, m_right_gray.data(),
-               m_width, m_height);
+    pool.Queue(ComputeGray, m_left_img, m_left_gray.data(), m_width, m_height);
+    pool.Queue(ComputeGray, m_right_img, m_right_gray.data(), m_width,
+               m_height);
 
     pool.Queue(PatchMatchStereo::ComputeGradient, m_left_gray.data(),
                m_left_grad.data(), m_width, m_height);
