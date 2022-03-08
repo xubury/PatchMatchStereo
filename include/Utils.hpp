@@ -157,5 +157,8 @@ inline void ComputeGray(const uint8_t* img, uint8_t* gray, int32_t width,
         }
     }
 }
+void WeightMedianFilter(const uint8_t* img_ptr, int32_t width, int32_t height,
+                        const std::vector<Vector2i>& mismatches,
+                        float* disparity, float patch_size, float gamma);
 
 #endif

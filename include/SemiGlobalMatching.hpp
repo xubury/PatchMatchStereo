@@ -44,7 +44,9 @@ class SemiGlobalMatching {
                             const uint32_t* right_census, int32_t width,
                             int32_t height, int32_t min_disparity,
                             int32_t max_disparity);
-    void ComputeDisparity(float* disparity);
+    static void ComputeDisparity(float* disparity, int32_t width,
+                                 int32_t height, const uint8_t* cost,
+                                 float min_disparity, float max_disparity);
     void LRCheck();
     void FillHole();
 
@@ -97,6 +99,8 @@ class SemiGlobalMatching {
 
     std::vector<Vector2i> m_left_mismatches;
     std::vector<Vector2i> m_right_mismatches;
+    std::vector<Vector2i> m_left_occlusion;
+    std::vector<Vector2i> m_right_occlusion;
 };
 
 #endif

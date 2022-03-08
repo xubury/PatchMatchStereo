@@ -33,6 +33,8 @@ int main(int argc, char *args[]) {
         timer.Restart();
         PatchMatchStereo pms;
         PatchMatchStereo::Option option;
+        // option.is_fill_hole = false;
+        // option.is_check_lr = false;
         option.num_iters = 3;
         pms.Init(width, height, option);
         pms.Match(left_img, right_img, pms_disp.data());
@@ -46,8 +48,8 @@ int main(int argc, char *args[]) {
         timer.Restart();
         SemiGlobalMatching sgm;
         SemiGlobalMatching::Option option;
-        option.is_fill_hole = false;
-        option.is_check_lr = false;
+        // option.is_fill_hole = false;
+        // option.is_check_lr = false;
 
         sgm.Init(width, height, option);
         sgm.Match(left_img, right_img, sgm_disp.data());
