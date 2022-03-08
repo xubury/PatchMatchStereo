@@ -136,10 +136,12 @@ inline void OutputDebugImg(int32_t width, int32_t height, int32_t channels,
                            float* data, float min, float max,
                            const std::string& name) {
     std::vector<uint8_t> integer_img(width * height * channels);
+    auto range =
+        (std::numeric_limits<decltype(integer_img)::value_type>::max() -
+         std::numeric_limits<decltype(integer_img)::value_type>::min()) /
+        (max - min);
     for (size_t i = 0; i < integer_img.size(); ++i) {
-        integer_img[i] = std::round(
-            data[i] / (max - min) *
-            std::numeric_limits<decltype(integer_img)::value_type>::max());
+        integer_img[i] = std::round((data[i] - min) * range);
     }
     OutputDebugImg(width, height, channels, integer_img.data(), name);
 }
